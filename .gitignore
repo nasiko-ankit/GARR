@@ -8,3 +8,8 @@ coverage/
 .DS_Store
 .vscode/
 .idea/
+
+# Local-only: internal working docs and source specs
+CLAUDE.md
+PROGRESS.md
+*.docx
