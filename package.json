@@ -17,6 +17,8 @@
     "migrate": "tsx --env-file=.env src/db/migrate.ts"
   },
   "dependencies": {
+    "@fastify/swagger": "^9.7.0",
+    "@fastify/swagger-ui": "^5.2.6",
     "fastify": "^5.1.0",
     "postgres": "^3.4.4"
   },

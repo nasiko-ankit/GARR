@@ -4,6 +4,7 @@ import { buildConfig } from './config/index.js';
 import { registerErrorHandler } from './plugins/errorHandler.js';
 import { registerCors } from './plugins/cors.js';
 import { registerDb } from './plugins/db.js';
+import { registerSwagger } from './plugins/swagger.js';
 import { registerHealthRoute } from './routes/health.js';
 import { registerRegisterRoutes } from './routes/register.js';
 import { registerOwnersRoutes } from './routes/owners.js';
@@ -31,6 +32,9 @@ export async function buildServer(options: BuildServerOptions = {}) {
   await registerErrorHandler(fastify);
   await registerCors(fastify);
   await registerDb(fastify);
+
+  // Swagger must register before routes — schemas snapshot at route registration time
+  await registerSwagger(fastify);
 
   // Routes
   await registerHealthRoute(fastify);
