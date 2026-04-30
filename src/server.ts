@@ -9,6 +9,7 @@ import { registerHealthRoute } from './routes/health.js';
 import { registerRegisterRoutes } from './routes/register.js';
 import { registerOwnersRoutes } from './routes/owners.js';
 import { registerManifestRoute } from './routes/manifest.js';
+import { registerSearchRoutes } from './routes/search.js';
 
 export interface BuildServerOptions {
   logger?: boolean;
@@ -40,6 +41,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
   await registerHealthRoute(fastify);
   await registerRegisterRoutes(fastify);
   await registerOwnersRoutes(fastify);
+  await registerSearchRoutes(fastify);
   await registerManifestRoute(fastify);
 
   return { fastify, config };
@@ -54,6 +56,7 @@ async function main(): Promise<void> {
     await fastify.close();
     process.exit(0);
   };
+
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
 
