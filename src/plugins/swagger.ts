@@ -29,6 +29,7 @@ export async function registerSwagger(fastify: FastifyInstance): Promise<void> {
         { name: 'register', description: 'EntityOwner registration (write path)' },
         { name: 'owners', description: 'EntityOwner read path' },
         { name: 'manifest', description: 'Signed root manifest' },
+        { name: 'search', description: 'Keyword search across registries' },
       ],
     },
   });
