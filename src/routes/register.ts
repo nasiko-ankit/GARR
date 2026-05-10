@@ -11,31 +11,8 @@ import type {
   RegisterRequest,
   VerifyChallengeRequest,
 } from '../types/api/register.js';
-import type { EntityOwnerWire } from '../types/api/owners.js';
-import type { EntityOwner } from '../types/entityOwner.js';
 import { initiateRegistration, completeRegistration } from '../services/registration.js';
-
-/** Converts the internal camelCase EntityOwner row to the snake_case wire shape. */
-function toWire(owner: EntityOwner): EntityOwnerWire {
-  return {
-    owner_id: owner.ownerId,
-    display_name: owner.displayName,
-    domain: owner.domain,
-    contact_email: owner.contactEmail,
-    rap_url: owner.rapUrl,
-    rap_fallback: owner.rapFallback,
-    algorithm: owner.algorithm,
-    public_key: owner.publicKey,
-    key_id: owner.keyId,
-    ttl_seconds: owner.ttlSeconds,
-    serial: owner.serial,
-    status: owner.status,
-    issued_at: owner.issuedAt.toISOString(),
-    expires_at: owner.expiresAt.toISOString(),
-    signature_value: owner.signatureValue,
-    signed_by: owner.signedBy,
-  };
-}
+import { toEntityOwnerWire } from '../services/ownerWire.js';
 
 /**
  * Registration flow (write path, §4 / §5.1).
@@ -97,7 +74,7 @@ export async function registerRegisterRoutes(
           detail: result.detail,
         });
       }
-      return reply.status(201).send(toWire(result.value));
+      return reply.status(201).send(toEntityOwnerWire(result.value));
     },
   );
 }

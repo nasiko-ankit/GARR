@@ -8,6 +8,7 @@ import { registerSwagger } from './plugins/swagger.js';
 import { registerHealthRoute } from './routes/health.js';
 import { registerRegisterRoutes } from './routes/register.js';
 import { registerOwnersRoutes } from './routes/owners.js';
+import { registerSearchRoutes } from './routes/search.js';
 import { registerManifestRoute } from './routes/manifest.js';
 
 export interface BuildServerOptions {
@@ -40,6 +41,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
   await registerHealthRoute(fastify);
   await registerRegisterRoutes(fastify);
   await registerOwnersRoutes(fastify);
+  await registerSearchRoutes(fastify);
   await registerManifestRoute(fastify);
 
   return { fastify, config };

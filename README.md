@@ -29,7 +29,8 @@ versioned bump. `✗` endpoints respond with `501 Not Implemented` and the
 | GET    | `/health`                                 | ✓      | DB ping; used by orchestrators     |
 | POST   | `/api/v1/register`                        | ✓      | DMARC + RAP check → 202 challenge  |
 | POST   | `/api/v1/register/:owner_id/verify`       | ✓      | sig verify → sign → 201            |
-| GET    | `/api/v1/owners/:owner_id`                | ✗      | 501; read path TBD                 |
+| GET    | `/api/v1/owners/:owner_id`                | ✓      | DB lookup; 200 or 404              |
+| GET    | `/api/v1/search`                          | ✓      | keyword search; owner_id/domain/name |
 | GET    | `/global_agent_root.json`                 | ✗      | 501; manifest publisher TBD        |
 
 ## Scripts

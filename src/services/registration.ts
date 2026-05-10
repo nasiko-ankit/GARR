@@ -229,6 +229,7 @@ export async function completeRegistration(
     dmarcPolicy: pending.dmarcPolicy,
     ttlSeconds: pending.ttlSeconds,
     serial,
+    issuedAt,
     expiresAt,
     signatureValue,
     signedBy: config.signing.keyId,
