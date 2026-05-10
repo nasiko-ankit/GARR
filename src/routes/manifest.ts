@@ -1,15 +1,15 @@
 import type { FastifyInstance } from 'fastify';
 import { apiErrorSchema } from '../types/api/common.js';
 import { globalAgentRootSchema } from '../types/api/manifest.js';
+import { assembleManifest } from '../services/manifestAssembly.js';
 
 /**
- * Root manifest endpoint (CLAUDE.md §5.1 publisher → §5.2 read).
+ * Root manifest endpoint (§5.2 read path).
  *
  *   GET /global_agent_root.json  → 200 GlobalAgentRoot
  *
- * v1 stage 1 returns 501. v2 will serve this from CDN with a fall-through
- * to this origin route. Real handler lands when the manifest publisher
- * cron job is implemented.
+ * Assembles the signed manifest on demand from all active EntityOwners.
+ * TODO v2: cache in Redis (§6.2) and publish to CDN via manifest publisher cron (§5.1)
  */
 export async function registerManifestRoute(
   fastify: FastifyInstance,
@@ -20,16 +20,13 @@ export async function registerManifestRoute(
       schema: {
         response: {
           200: globalAgentRootSchema,
-          501: apiErrorSchema,
           503: apiErrorSchema,
         },
       },
     },
     async (_request, reply) => {
-      return reply.status(501).send({
-        error: 'not_implemented',
-        endpoint: 'GET /global_agent_root.json',
-      });
+      const manifest = await assembleManifest();
+      return reply.status(200).send(manifest);
     },
   );
 }
