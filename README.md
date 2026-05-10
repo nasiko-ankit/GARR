@@ -27,8 +27,8 @@ versioned bump. `✗` endpoints respond with `501 Not Implemented` and the
 | Method | Path                                      | Status | Notes                              |
 |--------|-------------------------------------------|--------|------------------------------------|
 | GET    | `/health`                                 | ✓      | DB ping; used by orchestrators     |
-| POST   | `/api/v1/register`                        | ✗      | 501; verification + signing TBD    |
-| POST   | `/api/v1/register/:owner_id/verify`       | ✗      | 501; challenge response TBD        |
+| POST   | `/api/v1/register`                        | ✓      | DMARC + RAP check → 202 challenge  |
+| POST   | `/api/v1/register/:owner_id/verify`       | ✓      | sig verify → sign → 201            |
 | GET    | `/api/v1/owners/:owner_id`                | ✗      | 501; read path TBD                 |
 | GET    | `/global_agent_root.json`                 | ✗      | 501; manifest publisher TBD        |
 

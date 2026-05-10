@@ -11,15 +11,37 @@ import type {
   RegisterRequest,
   VerifyChallengeRequest,
 } from '../types/api/register.js';
+import type { EntityOwnerWire } from '../types/api/owners.js';
+import type { EntityOwner } from '../types/entityOwner.js';
+import { initiateRegistration, completeRegistration } from '../services/registration.js';
+
+/** Converts the internal camelCase EntityOwner row to the snake_case wire shape. */
+function toWire(owner: EntityOwner): EntityOwnerWire {
+  return {
+    owner_id: owner.ownerId,
+    display_name: owner.displayName,
+    domain: owner.domain,
+    contact_email: owner.contactEmail,
+    rap_url: owner.rapUrl,
+    rap_fallback: owner.rapFallback,
+    algorithm: owner.algorithm,
+    public_key: owner.publicKey,
+    key_id: owner.keyId,
+    ttl_seconds: owner.ttlSeconds,
+    serial: owner.serial,
+    status: owner.status,
+    issued_at: owner.issuedAt.toISOString(),
+    expires_at: owner.expiresAt.toISOString(),
+    signature_value: owner.signatureValue,
+    signed_by: owner.signedBy,
+  };
+}
 
 /**
- * Registration flow (write path, CLAUDE.md §4 / §5.1).
+ * Registration flow (write path, §4 / §5.1).
  *
- *   POST /api/v1/register                       → 202 PendingChallenge
- *   POST /api/v1/register/:owner_id/verify      → 201 RegisteredOwner
- *
- * Both handlers return 501 in v1 stage 1. Real implementation lands in
- * Step 12 (DNS TXT + RAP HEAD verification → key challenge → signing).
+ *   POST /api/v1/register                  → 202 PendingChallengeResponse
+ *   POST /api/v1/register/:owner_id/verify → 201 EntityOwnerWire
  */
 export async function registerRegisterRoutes(
   fastify: FastifyInstance,
@@ -34,15 +56,18 @@ export async function registerRegisterRoutes(
           400: apiErrorSchema,
           409: apiErrorSchema,
           422: apiErrorSchema,
-          501: apiErrorSchema,
         },
       },
     },
-    async (_request, reply) => {
-      return reply.status(501).send({
-        error: 'not_implemented',
-        endpoint: 'POST /api/v1/register',
-      });
+    async (request, reply) => {
+      const result = await initiateRegistration(request.body, request.ip);
+      if (!result.ok) {
+        return reply.status(result.statusCode).send({
+          error: result.error,
+          detail: result.detail,
+        });
+      }
+      return reply.status(202).send(result.value);
     },
   );
 
@@ -57,15 +82,22 @@ export async function registerRegisterRoutes(
           400: apiErrorSchema,
           404: apiErrorSchema,
           422: apiErrorSchema,
-          501: apiErrorSchema,
         },
       },
     },
-    async (_request, reply) => {
-      return reply.status(501).send({
-        error: 'not_implemented',
-        endpoint: 'POST /api/v1/register/:owner_id/verify',
-      });
+    async (request, reply) => {
+      const result = await completeRegistration(
+        request.params.owner_id,
+        request.body.challenge_signature,
+        request.ip,
+      );
+      if (!result.ok) {
+        return reply.status(result.statusCode).send({
+          error: result.error,
+          detail: result.detail,
+        });
+      }
+      return reply.status(201).send(toWire(result.value));
     },
   );
 }
