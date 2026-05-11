@@ -10,6 +10,7 @@ import { registerRegisterRoutes } from './routes/register.js';
 import { registerOwnersRoutes } from './routes/owners.js';
 import { registerSearchRoutes } from './routes/search.js';
 import { registerManifestRoute } from './routes/manifest.js';
+import { registerResolveRoute } from './routes/resolve.js';
 
 export interface BuildServerOptions {
   logger?: boolean;
@@ -43,6 +44,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
   await registerOwnersRoutes(fastify);
   await registerSearchRoutes(fastify);
   await registerManifestRoute(fastify);
+  await registerResolveRoute(fastify);
 
   return { fastify, config };
 }
