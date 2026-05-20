@@ -11,6 +11,7 @@ import { registerOwnersRoutes } from './routes/owners.js';
 import { registerSearchRoutes } from './routes/search.js';
 import { registerManifestRoute } from './routes/manifest.js';
 import { registerResolveRoute } from './routes/resolve.js';
+import { registerMockRoutes } from './routes/mock.js';
 
 export interface BuildServerOptions {
   logger?: boolean;
@@ -45,6 +46,13 @@ export async function buildServer(options: BuildServerOptions = {}) {
   await registerSearchRoutes(fastify);
   await registerManifestRoute(fastify);
   await registerResolveRoute(fastify);
+
+  // Mock surfaces for the demo (NANDA Index, registry gateway, A2A invoke).
+  // Mounted in dev by default; in production only when GARR_MOCK_VERIFICATION
+  // is also on — same opt-in posture as the rest of the demo plumbing.
+  if (config.nodeEnv !== 'production' || config.mockVerification) {
+    await registerMockRoutes(fastify);
+  }
 
   return { fastify, config };
 }

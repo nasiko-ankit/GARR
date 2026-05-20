@@ -59,6 +59,12 @@ export interface Config {
    * Off by default; enabled via GARR_MOCK_VERIFICATION=true.
    */
   readonly mockVerification: boolean;
+  /**
+   * Override for the NANDA Index hostname used by the resolver. When set
+   * (e.g. http://localhost:3000/mock/nanda), the resolver hits the mock
+   * NANDA endpoint instead of `https://nandaindex.org`. Null when unset.
+   */
+  readonly nandaIndexBaseUrl: string | null;
 }
 
 /**
@@ -112,5 +118,9 @@ export function buildConfig(): Config {
       keyId: optionalEnv('SIGNING_KEY_ID', 'garr-dev-unspecified'),
     },
     mockVerification,
+    nandaIndexBaseUrl: (() => {
+      const raw = optionalEnv('NANDA_INDEX_BASE_URL', '').trim();
+      return raw === '' ? null : raw.replace(/\/+$/, '');
+    })(),
   };
 }

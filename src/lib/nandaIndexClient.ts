@@ -1,4 +1,14 @@
 import type { IndexRecord } from '../types/api/resolve.js';
+import { buildConfig } from '../config/index.js';
+
+/**
+ * NANDA Index base URL override, read once at module load from
+ * NANDA_INDEX_BASE_URL. When set, replaces the `https://<indexHost>` prefix
+ * — used by the demo to point the resolver at the local mock index.
+ *
+ * Cached as a module-level constant so we do not re-read env on every call.
+ */
+const NANDA_BASE_URL_OVERRIDE: string | null = buildConfig().nandaIndexBaseUrl;
 
 /** Typed error thrown by lookupNandaIndex — resolution service maps code to HTTP status. */
 export class NandaIndexError extends Error {
@@ -29,7 +39,14 @@ export async function lookupNandaIndex(
   agentId: string,
   indexHost = 'nandaindex.org',
 ): Promise<IndexRecord> {
-  const url = `https://${indexHost}/lookup?agent=${encodeURIComponent(agentId)}`;
+  // NANDA_INDEX_BASE_URL wins when set — points the demo resolver at the
+  // local mock index. Otherwise we hit `https://<indexHost>` per the spec.
+  const url = NANDA_BASE_URL_OVERRIDE
+    ? `${NANDA_BASE_URL_OVERRIDE}/lookup?agent=${encodeURIComponent(agentId)}`
+    : `https://${indexHost}/lookup?agent=${encodeURIComponent(agentId)}`;
+  // Error messages should reflect where we actually called, not the
+  // spec-default host, when the override is active.
+  const displayHost = NANDA_BASE_URL_OVERRIDE ?? indexHost;
 
   let res: Response;
   try {
@@ -39,35 +56,35 @@ export async function lookupNandaIndex(
     });
   } catch (err) {
     throw new NandaIndexError(
-      `NANDA Index at ${indexHost} is unreachable: ${(err as Error).message}`,
+      `NANDA Index at ${displayHost} is unreachable: ${(err as Error).message}`,
       'unreachable',
     );
   }
 
   if (res.status === 404) {
     throw new NandaIndexError(
-      `agent "${agentId}" is not registered in NANDA Index at ${indexHost}`,
+      `agent "${agentId}" is not registered in NANDA Index at ${displayHost}`,
       'not_found',
     );
   }
 
   if (res.status === 400) {
     throw new NandaIndexError(
-      `NANDA Index at ${indexHost} rejected the query for "${agentId}" (400)`,
+      `NANDA Index at ${displayHost} rejected the query for "${agentId}" (400)`,
       'bad_request',
     );
   }
 
   if (res.status === 429) {
     throw new NandaIndexError(
-      `NANDA Index at ${indexHost} rate-limited this resolver (429)`,
+      `NANDA Index at ${displayHost} rate-limited this resolver (429)`,
       'rate_limited',
     );
   }
 
   if (res.status === 503 || !res.ok) {
     throw new NandaIndexError(
-      `NANDA Index at ${indexHost} returned ${res.status} for "${agentId}"`,
+      `NANDA Index at ${displayHost} returned ${res.status} for "${agentId}"`,
       'unreachable',
     );
   }
@@ -77,7 +94,7 @@ export async function lookupNandaIndex(
     data = await res.json();
   } catch {
     throw new NandaIndexError(
-      `NANDA Index at ${indexHost} returned non-JSON for "${agentId}"`,
+      `NANDA Index at ${displayHost} returned non-JSON for "${agentId}"`,
       'unreachable',
     );
   }
@@ -92,7 +109,7 @@ export async function lookupNandaIndex(
     typeof record['signature']  !== 'string'
   ) {
     throw new NandaIndexError(
-      `NANDA Index at ${indexHost} returned a malformed IndexRecord for "${agentId}"`,
+      `NANDA Index at ${displayHost} returned a malformed IndexRecord for "${agentId}"`,
       'unreachable',
     );
   }
