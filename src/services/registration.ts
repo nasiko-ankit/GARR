@@ -72,29 +72,39 @@ export async function initiateRegistration(
     };
   }
 
+  // Demo escape hatch: GARR_MOCK_VERIFICATION=true skips DMARC + RAP so
+  // we can seed fake registries whose domains have no real DNS/HTTPS.
+  // Challenge + signature checks still run on verify; this only bypasses
+  // the external I/O steps of §5.1.
+  const mockVerification = buildConfig().mockVerification;
+
   // 422 — DMARC TXT verification (§5.1 write pipeline)
   let dmarcPolicy: string;
-  try {
-    dmarcPolicy = await verifyDmarcTxt(body.domain);
-  } catch (err) {
-    return {
-      ok: false,
-      statusCode: 422,
-      error: 'dmarc_verification_failed',
-      detail: (err as Error).message,
-    };
-  }
+  if (mockVerification) {
+    dmarcPolicy = 'v=DMARC1; p=none; (mock-verification)';
+  } else {
+    try {
+      dmarcPolicy = await verifyDmarcTxt(body.domain);
+    } catch (err) {
+      return {
+        ok: false,
+        statusCode: 422,
+        error: 'dmarc_verification_failed',
+        detail: (err as Error).message,
+      };
+    }
 
-  // 422 — RAP reachability check (§5.1 write pipeline)
-  try {
-    await headRap(body.rap_url);
-  } catch (err) {
-    return {
-      ok: false,
-      statusCode: 422,
-      error: 'rap_unreachable',
-      detail: (err as Error).message,
-    };
+    // 422 — RAP reachability check (§5.1 write pipeline)
+    try {
+      await headRap(body.rap_url);
+    } catch (err) {
+      return {
+        ok: false,
+        statusCode: 422,
+        error: 'rap_unreachable',
+        detail: (err as Error).message,
+      };
+    }
   }
 
   const challengeNonce = generateChallengeNonce();

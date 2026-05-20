@@ -123,4 +123,26 @@ describe('buildConfig', () => {
     expect(() => buildConfig()).toThrow('__mock_exit__');
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
+
+  it('parses GARR_MOCK_VERIFICATION correctly', () => {
+    process.env.DATABASE_URL = 'x';
+    process.env.SIGNING_PRIVATE_KEY = 'y';
+
+    delete process.env.GARR_MOCK_VERIFICATION;
+    expect(buildConfig().mockVerification).toBe(false);
+
+    process.env.GARR_MOCK_VERIFICATION = 'true';
+    expect(buildConfig().mockVerification).toBe(true);
+
+    process.env.GARR_MOCK_VERIFICATION = '1';
+    expect(buildConfig().mockVerification).toBe(true);
+
+    process.env.GARR_MOCK_VERIFICATION = 'false';
+    expect(buildConfig().mockVerification).toBe(false);
+
+    process.env.GARR_MOCK_VERIFICATION = 'yes';
+    const exitSpy = mockExit();
+    expect(() => buildConfig()).toThrow('__mock_exit__');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
 });
