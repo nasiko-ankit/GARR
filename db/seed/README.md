@@ -4,13 +4,14 @@ This directory holds the cross-registry demo data:
 
 | Path | What it is | Committed? |
 |---|---|---|
-| `google.json` | Signed AgentCards + IndexRecords for the Google demo registry | ✅ |
-| `walmart.json` | Signed AgentCards + IndexRecords for the Walmart demo registry | ✅ |
+| `google.json` | Signed AgentCards + IndexRecords for the Google demo registry | ❌ (gitignored) |
+| `walmart.json` | Signed AgentCards + IndexRecords for the Walmart demo registry | ❌ (gitignored) |
 | `keys/<slug>-private.pem` | ed25519 private key used to sign the cards above | ❌ (gitignored) |
 | `keys/<slug>-public.pem` | matching public key, also registered in `entity_owners` | ❌ (gitignored) |
 
-The signed JSON files are committed so a fresh clone gets a working demo without
-needing to regenerate keys, but the keys themselves are local-only.
+Nothing in this directory is committed — the JSON files bake in your local
+server URL (`http://localhost:3000`) and your dev DB's keys, so they're
+per-environment. Run the seed once after starting the server.
 
 ## How to regenerate
 

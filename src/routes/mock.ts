@@ -41,6 +41,38 @@ const slugSchema = {
   maxLength: 64,
 } as const;
 
+/**
+ * Relaxed copy of agentCardSchema for request-body validation only. The
+ * production schema requires `invocation_url` and `card_url` to be
+ * `^https://`, which is correct for the spec but blocks our local demo
+ * where everything lives on `http://localhost`. The response side keeps
+ * the strict schema (fast-json-stringify doesn't pattern-check anyway).
+ */
+const agentCardInputSchema = {
+  type: 'object',
+  required: [
+    'id',
+    'display_name',
+    'description',
+    'capabilities',
+    'invocation_url',
+    'protocol',
+    'visibility',
+    'signature',
+  ],
+  additionalProperties: true,
+  properties: {
+    id:             { type: 'string', minLength: 1 },
+    display_name:   { type: 'string', minLength: 1 },
+    description:    { type: 'string' },
+    capabilities:   { type: 'array', items: { type: 'string' } },
+    invocation_url: { type: 'string', format: 'uri' },
+    protocol:       { type: 'string', minLength: 1 },
+    visibility:     { type: 'string', enum: ['public', 'private'] },
+    signature:      { type: 'string', minLength: 1 },
+  },
+} as const;
+
 const handshakeResponseSchema = {
   type: 'object',
   required: ['handshake_ok', 'callee_card', 'echoed_caller_id', 'at'],
@@ -131,7 +163,7 @@ export async function registerMockRoutes(fastify: FastifyInstance): Promise<void
           required: ['caller_card', 'callee_agent_id'],
           additionalProperties: false,
           properties: {
-            caller_card: agentCardSchema,
+            caller_card: agentCardInputSchema,
             callee_agent_id: { type: 'string', minLength: 1 },
           },
         },
