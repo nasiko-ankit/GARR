@@ -171,9 +171,12 @@ export async function completeRegistration(
     };
   }
 
-  // 422 — signature invalid (§9.1 key challenge verification)
+  // 422 — signature invalid (§9.1 key challenge verification).
+  // The nonce is stored as a 64-char hex string; the registrant signs the
+  // raw 32 bytes it decodes to (cryptographic norm, and what the in-browser
+  // signer in garr-web sends). Pass the decoded Buffer, not the hex text.
   const signatureValid = verifySignature(
-    pending.challengeNonce,
+    Buffer.from(pending.challengeNonce, 'hex'),
     challengeSignature,
     pending.publicKey,
     pending.algorithm,
@@ -238,10 +241,8 @@ export async function completeRegistration(
   await insertAuditLog({
     ownerId: pending.ownerId,
     action: 'register',
-    actor: 'system',
-    serialOld: null,
-    serialNew: serial,
-    ipAddress: ip,
+    actorIp: ip,
+    diff: { serial_new: serial },
   });
 
   await deletePending(pending.ownerId);
