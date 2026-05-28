@@ -2,7 +2,13 @@ import type { FastifyInstance } from 'fastify';
 import { apiErrorSchema } from '../types/api/common.js';
 import { indexRecordSchema, agentCardSchema } from '../types/api/resolve.js';
 import type { AgentCard } from '../types/api/resolve.js';
-import { lookupAgent, getCard, getAgentBySlug } from '../mock/seedStore.js';
+import {
+  lookupAgent,
+  getCard,
+  getAgentBySlug,
+  addAgent,
+  listRegistries,
+} from '../mock/seedStore.js';
 
 /**
  * Mock surfaces for the cross-registry demo. NOT mounted in production
@@ -186,6 +192,125 @@ export async function registerMockRoutes(fastify: FastifyInstance): Promise<void
         callee_card: callee,
         echoed_caller_id: request.body.caller_card.id,
         at: new Date().toISOString(),
+      });
+    },
+  );
+
+  // ── Layer 2: list registries (for the UI dropdown) ────────────────────
+  fastify.get(
+    '/mock/registries',
+    {
+      schema: {
+        response: {
+          200: {
+            type: 'object',
+            required: ['registries'],
+            additionalProperties: false,
+            properties: {
+              registries: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  required: ['slug', 'owner_id', 'agent_count'],
+                  additionalProperties: false,
+                  properties: {
+                    slug: { type: 'string' },
+                    owner_id: { type: 'string' },
+                    agent_count: { type: 'integer', minimum: 0 },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    async (_request, reply) => reply.status(200).send({ registries: listRegistries() }),
+  );
+
+  // ── Layer 2: agent registration (write side) ──────────────────────────
+  fastify.post<{
+    Params: { slug: string };
+    Body: {
+      name: string;
+      display_name: string;
+      description: string;
+      capabilities: string[];
+    };
+  }>(
+    '/mock/registries/:slug/agents',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['slug'],
+          additionalProperties: false,
+          properties: { slug: slugSchema },
+        },
+        body: {
+          type: 'object',
+          required: ['name', 'display_name', 'description', 'capabilities'],
+          additionalProperties: false,
+          properties: {
+            name: {
+              type: 'string',
+              pattern: '^[a-z0-9-]+$',
+              minLength: 1,
+              maxLength: 64,
+            },
+            display_name: { type: 'string', minLength: 1, maxLength: 200 },
+            description: { type: 'string', minLength: 1, maxLength: 1000 },
+            capabilities: {
+              type: 'array',
+              minItems: 1,
+              maxItems: 16,
+              items: { type: 'string', minLength: 1, maxLength: 128 },
+            },
+          },
+        },
+        response: {
+          201: {
+            type: 'object',
+            required: ['agent_id', 'index_record', 'agent_card'],
+            additionalProperties: false,
+            properties: {
+              agent_id: { type: 'string' },
+              index_record: indexRecordSchema,
+              agent_card: agentCardSchema,
+            },
+          },
+          404: apiErrorSchema,
+          409: apiErrorSchema,
+          500: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      // Build the apiBase from the request host so card_url + invocation_url
+      // come back pointing at this exact server (works whether you're on
+      // localhost:3000 or some other host the demo is deployed to).
+      const proto = (request.headers['x-forwarded-proto'] as string | undefined) ?? 'http';
+      const host = request.headers.host ?? 'localhost:3000';
+      const apiBase = `${proto}://${host}`;
+
+      const result = addAgent(request.params.slug, request.body, apiBase);
+      if (!result.ok) {
+        const statusByCode: Record<typeof result.error.code, number> = {
+          registry_not_found: 404,
+          private_key_missing: 500,
+          agent_id_conflict: 409,
+          persist_failed: 500,
+        };
+        return reply.status(statusByCode[result.error.code]).send({
+          error: result.error.code,
+          detail: result.error.detail,
+        });
+      }
+
+      return reply.status(201).send({
+        agent_id: result.agent_id,
+        index_record: result.index_record,
+        agent_card: result.agent_card,
       });
     },
   );
