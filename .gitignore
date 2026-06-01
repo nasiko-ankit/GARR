@@ -13,3 +13,6 @@ coverage/
 CLAUDE.md
 PROGRESS.md
 *.docx
+
+# Demo private keys — never commit
+.keys.demo.json

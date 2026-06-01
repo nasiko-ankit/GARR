@@ -50,6 +50,7 @@ export interface SigningConfig {
 export interface Config {
   readonly port: number;
   readonly nodeEnv: string;
+  readonly demoMode: boolean;
   readonly db: DbConfig;
   readonly signing: SigningConfig;
 }
@@ -64,6 +65,7 @@ export function buildConfig(): Config {
   return {
     port: parsePositiveInt('PORT', optionalEnv('PORT', '3000')),
     nodeEnv: optionalEnv('NODE_ENV', 'development'),
+    demoMode: optionalEnv('GARR_DEMO_MODE', 'false') === 'true',
     db: {
       url: requireEnv('DATABASE_URL'),
       maxConnections: parsePositiveInt(

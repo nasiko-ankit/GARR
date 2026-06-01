@@ -1,3 +1,5 @@
+import { buildConfig } from '../config/index.js';
+
 /**
  * Issues an HTTP HEAD request to `rapUrl` to verify the RAP endpoint is
  * reachable and returns a 2xx status.
@@ -7,11 +9,14 @@
  * Node's default TLS verification.
  *
  * Called only on the write path (§5.1) — never at read time.
+ * When GARR_DEMO_MODE=true, skips the reachability check entirely.
  *
- * @param rapUrl - HTTPS URL of the organization's agents.json endpoint
+ * @param rapUrl - URL of the organization's agents.json endpoint
  * @throws Error when the request fails or the status is not 2xx
  */
 export async function headRap(rapUrl: string): Promise<void> {
+  if (buildConfig().demoMode) return;
+
   let res: Response;
   try {
     res = await fetch(rapUrl, { method: 'HEAD', redirect: 'follow' });
