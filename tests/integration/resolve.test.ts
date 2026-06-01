@@ -1,15 +1,18 @@
 import { vi, describe, it, expect, beforeAll, afterAll } from 'vitest';
+import {
+  generateKeyPairSync,
+  sign as cryptoSign,
+  createPrivateKey,
+} from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import type { IndexRecord, AgentCard, ResolveResponse } from '../../src/types/api/resolve.js';
+import type { ResolveResponse } from '../../src/types/api/resolve.js';
 
-// Mock all external I/O libs before the server loads them.
-// Vitest hoists vi.mock() to the top of the module.
+// Mock all external I/O before the server loads.
 vi.mock('../../src/lib/nandaIndexClient.js', () => ({
   lookupNandaIndex: vi.fn(),
   NandaIndexError: class NandaIndexError extends Error {
     constructor(message: string, public readonly code: string) {
-      super(message);
-      this.name = 'NandaIndexError';
+      super(message); this.name = 'NandaIndexError';
     }
   },
 }));
@@ -18,8 +21,7 @@ vi.mock('../../src/lib/dnsSrvResolver.js', () => ({
   lookupViaDnsSrv: vi.fn(),
   DnsSrvError: class DnsSrvError extends Error {
     constructor(message: string, public readonly code: string) {
-      super(message);
-      this.name = 'DnsSrvError';
+      super(message); this.name = 'DnsSrvError';
     }
   },
 }));
@@ -28,13 +30,15 @@ vi.mock('../../src/lib/agentCardFetcher.js', () => ({
   fetchAgentCard: vi.fn(),
   AgentCardError: class AgentCardError extends Error {
     constructor(message: string, public readonly code: string) {
-      super(message);
-      this.name = 'AgentCardError';
+      super(message); this.name = 'AgentCardError';
     }
   },
 }));
 
 import { buildServer } from '../../src/server.js';
+import { getSql } from '../../src/db/client.js';
+import { buildConfig } from '../../src/config/index.js';
+import { signCanonical, canonicalize } from '../../src/services/signing.js';
 import { lookupNandaIndex } from '../../src/lib/nandaIndexClient.js';
 import { lookupViaDnsSrv } from '../../src/lib/dnsSrvResolver.js';
 import { fetchAgentCard } from '../../src/lib/agentCardFetcher.js';
@@ -46,26 +50,22 @@ const mockLookupNandaIndex = vi.mocked(lookupNandaIndex);
 const mockLookupViaDnsSrv  = vi.mocked(lookupViaDnsSrv);
 const mockFetchAgentCard   = vi.mocked(fetchAgentCard);
 
-// ── Fixtures ──────────────────────────────────────────────────────────────────
+// ── Test constants ────────────────────────────────────────────────────────────
 
-const TEST_INDEX_RECORD: IndexRecord = {
-  agent_id:   'scheduler@nasiko.com',
-  agent_name: 'Scheduler Agent',
-  card_url:   'https://nasiko.com/agents/scheduler.json',
-  ttl:        3600,
-  signature:  'dGVzdC1zaWduYXR1cmU=',
-};
+const RESOLVE_OWNER_ID  = 'test-resolve-owner';
+const RESOLVE_DOMAIN    = 'resolve-test.example.com';
+const RESOLVE_RAP_URL   = 'https://resolve-test.example.com/rap';
+const RESOLVE_IDENTIFIER = 'billing-agent';
+const RESOLVE_LOCATOR   = `${RESOLVE_IDENTIFIER}@${RESOLVE_DOMAIN}:global`;
+const RESOLVE_CARD_URL  = `${RESOLVE_RAP_URL}/agents/${RESOLVE_IDENTIFIER}`;
 
-const TEST_AGENT_CARD: AgentCard = {
-  id:             'scheduler@nasiko.com',
-  display_name:   'Scheduler Agent',
-  description:    'Schedules meetings and tasks.',
-  capabilities:   ['schedule', 'remind'],
-  invocation_url: 'https://nasiko.com/invoke/scheduler',
-  protocol:       'https',
-  visibility:     'public',
-  signature:      'dGVzdC1jYXJkLXNpZw==',
-};
+/** Sign an AgentCard: canonicalize payload excluding 'signature', sign with ed25519. */
+function signAgentCard(card: Record<string, unknown>, privKeyPem: string): string {
+  const { signature: _strip, ...payload } = card;
+  const data = Buffer.from(canonicalize(payload), 'utf8');
+  const key = createPrivateKey(privKeyPem);
+  return cryptoSign(null, data, key).toString('base64');
+}
 
 // ── Suite ─────────────────────────────────────────────────────────────────────
 
@@ -84,189 +84,320 @@ describe('GET /api/v1/resolve', () => {
     await closeSql();
   });
 
-  // ── Happy paths ──────────────────────────────────────────────────────────────
+  // ── :global mode (DB-backed, full signature chain) ─────────────────────────
 
-  it(':global mode — resolves via NANDA Index and returns 200', async () => {
-    mockLookupNandaIndex.mockResolvedValueOnce(TEST_INDEX_RECORD);
-    mockFetchAgentCard.mockResolvedValueOnce(TEST_AGENT_CARD);
+  describe(':global mode', () => {
+    // EntityOwner key pair — org signs its AgentCards with the private key;
+    // the public key is stored in GARR and used to verify cards.
+    const { privateKey: ownerPrivKey, publicKey: ownerPubKey } =
+      generateKeyPairSync('ed25519', {
+        privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+        publicKeyEncoding:  { type: 'spki',  format: 'pem' },
+      });
 
-    const res = await fastify.inject({
-      method: 'GET',
-      url: '/api/v1/resolve?locator=scheduler%40nasiko.com%3Aglobal',
+    // AgentCard payload (without 'signature') — signed in each test that needs it
+    const agentCardBase: Record<string, unknown> = {
+      id:             `${RESOLVE_IDENTIFIER}@${RESOLVE_DOMAIN}`,
+      display_name:   'Billing Agent',
+      description:    'Handles billing inquiries.',
+      version:        '1.0.0',
+      capabilities:   ['billing.invoice', 'billing.payment'],
+      invocation_url: `${RESOLVE_RAP_URL}/invoke/${RESOLVE_IDENTIFIER}`,
+      protocol:       'a2a',
+      visibility:     'public',
+      signed_by:      'test-owner-key-1',
+      created_at:     '2026-01-01T00:00:00Z',
+      updated_at:     '2026-01-01T00:00:00Z',
+    };
+
+    beforeAll(async () => {
+      // Build and sign EntityOwner wire payload using GARR root key.
+      // Must match exactly what completeRegistration produces (§4.5).
+      const config = buildConfig();
+      const issuedAt  = new Date('2026-01-01T00:00:00Z');
+      const expiresAt = new Date('2027-01-01T00:00:00Z');
+      const wirePayload: Record<string, unknown> = {
+        owner_id:      RESOLVE_OWNER_ID,
+        display_name:  'Test Resolve Org',
+        domain:        RESOLVE_DOMAIN,
+        contact_email: 'admin@resolve-test.example.com',
+        rap_url:       RESOLVE_RAP_URL,
+        rap_fallback:  null,
+        algorithm:     'ed25519',
+        public_key:    ownerPubKey,
+        key_id:        'test-owner-key-1',
+        ttl_seconds:   86400,
+        serial:        '2026010100',
+        status:        'active',
+        issued_at:     issuedAt.toISOString(),
+        expires_at:    expiresAt.toISOString(),
+        signed_by:     config.signing.keyId,
+      };
+      const signatureValue = signCanonical(wirePayload, config.signing.privateKey);
+
+      const sql = getSql();
+      await sql`
+        INSERT INTO entity_owners (
+          owner_id, display_name, domain, contact_email,
+          rap_url, rap_fallback, algorithm, public_key, key_id,
+          dmarc_policy, ttl_seconds, serial, status,
+          issued_at, expires_at, signature_value, signed_by
+        ) VALUES (
+          ${RESOLVE_OWNER_ID}, 'Test Resolve Org', ${RESOLVE_DOMAIN},
+          'admin@resolve-test.example.com',
+          ${RESOLVE_RAP_URL}, ${null}, 'ed25519', ${ownerPubKey},
+          'test-owner-key-1', '', 86400, '2026010100', 'active',
+          ${issuedAt}, ${expiresAt}, ${signatureValue}, ${config.signing.keyId}
+        )
+      `;
     });
 
-    expect(res.statusCode).toBe(200);
-    const body = res.json<ResolveResponse>();
-    expect(body.locator).toBe('scheduler@nasiko.com:global');
-    expect(body.resolution_mode).toBe('global');
-    expect(body.resolved_via).toBe('nandaindex.org');
-    expect(body.index_record.agent_id).toBe('scheduler@nasiko.com');
-    expect(body.agent_card.id).toBe('scheduler@nasiko.com');
-    expect(mockLookupNandaIndex).toHaveBeenCalledWith('scheduler@nasiko.com');
-    expect(mockFetchAgentCard).toHaveBeenCalledWith(TEST_INDEX_RECORD.card_url);
-  });
-
-  it(':nandaindex.org mode — resolves via named NANDA Index and returns 200', async () => {
-    mockLookupNandaIndex.mockResolvedValueOnce(TEST_INDEX_RECORD);
-    mockFetchAgentCard.mockResolvedValueOnce(TEST_AGENT_CARD);
-
-    const res = await fastify.inject({
-      method: 'GET',
-      url: '/api/v1/resolve?locator=scheduler%40nasiko.com%3Anandaindex.org',
+    afterAll(async () => {
+      const sql = getSql();
+      await sql`DELETE FROM entity_owners WHERE owner_id = ${RESOLVE_OWNER_ID}`;
     });
 
-    expect(res.statusCode).toBe(200);
-    const body = res.json<ResolveResponse>();
-    expect(body.resolution_mode).toBe('nandaindex.org');
-    expect(body.resolved_via).toBe('nandaindex.org');
-    expect(mockLookupNandaIndex).toHaveBeenCalledWith('scheduler@nasiko.com', 'nandaindex.org');
-  });
+    it('happy path returns verified AgentCard', async () => {
+      const signature = signAgentCard(agentCardBase, ownerPrivKey);
+      const signedCard = { ...agentCardBase, signature };
 
-  it(':dnssrv mode — resolves via DNS SRV and returns 200', async () => {
-    mockLookupViaDnsSrv.mockResolvedValueOnce(TEST_INDEX_RECORD);
-    mockFetchAgentCard.mockResolvedValueOnce(TEST_AGENT_CARD);
+      mockFetchAgentCard.mockResolvedValueOnce(signedCard as ReturnType<typeof mockFetchAgentCard.mock.results[0]['value']>);
 
-    const res = await fastify.inject({
-      method: 'GET',
-      url: '/api/v1/resolve?locator=scheduler%40nasiko.com%3Adnssrv',
+      const res = await fastify.inject({
+        method: 'GET',
+        url: `/api/v1/resolve?locator=${encodeURIComponent(RESOLVE_LOCATOR)}`,
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json<ResolveResponse>();
+      expect(body.locator).toBe(RESOLVE_LOCATOR);
+      expect(body.resolution_mode).toBe('global');
+      expect(body.resolved_via).toBe('garr-db');
+      expect(body.index_record.agent_id).toBe(`${RESOLVE_IDENTIFIER}@${RESOLVE_DOMAIN}`);
+      expect(body.index_record.card_url).toBe(RESOLVE_CARD_URL);
+      expect(body.agent_card.id).toBe(`${RESOLVE_IDENTIFIER}@${RESOLVE_DOMAIN}`);
+      expect(mockFetchAgentCard).toHaveBeenCalledWith(RESOLVE_CARD_URL, undefined);
     });
 
-    expect(res.statusCode).toBe(200);
-    const body = res.json<ResolveResponse>();
-    expect(body.resolution_mode).toBe('dnssrv');
-    expect(body.resolved_via).toBe('dns-srv:nasiko.com');
-    expect(mockLookupViaDnsSrv).toHaveBeenCalledWith('scheduler@nasiko.com', 'nasiko.com');
-  });
+    it('unknown domain returns 404 NOT_FOUND', async () => {
+      const res = await fastify.inject({
+        method: 'GET',
+        url: `/api/v1/resolve?locator=${encodeURIComponent(`${RESOLVE_IDENTIFIER}@unknown.example.com:global`)}`,
+      });
 
-  it(':global mode falls back to :dnssrv when NANDA Index is unreachable (§15.4)', async () => {
-    mockLookupNandaIndex.mockRejectedValueOnce(
-      new NandaIndexError('NANDA Index unreachable', 'unreachable'),
-    );
-    mockLookupViaDnsSrv.mockResolvedValueOnce(TEST_INDEX_RECORD);
-    mockFetchAgentCard.mockResolvedValueOnce(TEST_AGENT_CARD);
-
-    const res = await fastify.inject({
-      method: 'GET',
-      url: '/api/v1/resolve?locator=scheduler%40nasiko.com%3Aglobal',
+      expect(res.statusCode).toBe(404);
+      expect(res.json().error).toBe('not_found');
     });
 
-    expect(res.statusCode).toBe(200);
-    const body = res.json<ResolveResponse>();
-    expect(body.resolved_via).toBe('dns-srv:nasiko.com');
-    expect(mockLookupViaDnsSrv).toHaveBeenCalledWith('scheduler@nasiko.com', 'nasiko.com');
-  });
+    it('RAP unreachable returns 503 RAP_UNREACHABLE', async () => {
+      mockFetchAgentCard.mockRejectedValueOnce(
+        new AgentCardError('connection refused', 'unreachable'),
+      );
 
-  // ── Error paths ──────────────────────────────────────────────────────────────
+      const res = await fastify.inject({
+        method: 'GET',
+        url: `/api/v1/resolve?locator=${encodeURIComponent(RESOLVE_LOCATOR)}`,
+      });
 
-  it('returns 400 when locator query param is missing', async () => {
-    const res = await fastify.inject({ method: 'GET', url: '/api/v1/resolve' });
-    expect(res.statusCode).toBe(400);
-  });
-
-  it('returns 400 with invalid_locator when mode suffix is missing', async () => {
-    const res = await fastify.inject({
-      method: 'GET',
-      url: '/api/v1/resolve?locator=scheduler%40nasiko.com',
-    });
-    expect(res.statusCode).toBe(400);
-    expect(res.json().error).toBe('invalid_locator');
-  });
-
-  it('returns 400 with invalid_locator for unknown mode', async () => {
-    const res = await fastify.inject({
-      method: 'GET',
-      url: '/api/v1/resolve?locator=scheduler%40nasiko.com%3Ahttp',
-    });
-    expect(res.statusCode).toBe(400);
-    expect(res.json().error).toBe('invalid_locator');
-  });
-
-  it('returns 404 when agent is not found in NANDA Index', async () => {
-    mockLookupNandaIndex.mockRejectedValueOnce(
-      new NandaIndexError('agent not found', 'not_found'),
-    );
-
-    const res = await fastify.inject({
-      method: 'GET',
-      url: '/api/v1/resolve?locator=unknown%40nasiko.com%3Aglobal',
+      expect(res.statusCode).toBe(503);
+      expect(res.json().error).toBe('unreachable');
     });
 
-    expect(res.statusCode).toBe(404);
-    expect(res.json().error).toBe('not_found');
+    it('bad AgentCard signature returns 502 SIGNATURE_INVALID', async () => {
+      // Generate a different key pair whose signature won't verify against ownerPubKey
+      const { privateKey: wrongKey } = generateKeyPairSync('ed25519', {
+        privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+        publicKeyEncoding:  { type: 'spki',  format: 'pem' },
+      });
+      const badSignature = signAgentCard(agentCardBase, wrongKey);
+      const tamperedCard = { ...agentCardBase, signature: badSignature };
+
+      mockFetchAgentCard.mockResolvedValueOnce(tamperedCard as ReturnType<typeof mockFetchAgentCard.mock.results[0]['value']>);
+
+      const res = await fastify.inject({
+        method: 'GET',
+        url: `/api/v1/resolve?locator=${encodeURIComponent(RESOLVE_LOCATOR)}`,
+      });
+
+      expect(res.statusCode).toBe(502);
+      expect(res.json().error).toBe('signature_invalid');
+    });
   });
 
-  it('returns 404 when DNS SRV record is absent', async () => {
-    mockLookupViaDnsSrv.mockRejectedValueOnce(
-      new DnsSrvError('no SRV record', 'no_srv_record'),
-    );
+  // ── :dnssrv mode ──────────────────────────────────────────────────────────
 
-    const res = await fastify.inject({
-      method: 'GET',
-      url: '/api/v1/resolve?locator=scheduler%40nasiko.com%3Adnssrv',
+  describe(':dnssrv mode', () => {
+    const DNSSRV_INDEX_RECORD = {
+      agent_id:   'scheduler@nasiko.com',
+      agent_name: 'Scheduler Agent',
+      card_url:   'https://nasiko.com/agents/scheduler.json',
+      ttl:        3600,
+      signature:  'dGVzdC1zaWduYXR1cmU=',
+    };
+
+    const DNSSRV_AGENT_CARD = {
+      id:             'scheduler@nasiko.com',
+      display_name:   'Scheduler Agent',
+      description:    'Schedules meetings and tasks.',
+      capabilities:   ['schedule', 'remind'],
+      invocation_url: 'https://nasiko.com/invoke/scheduler',
+      protocol:       'a2a',
+      visibility:     'public' as const,
+      signature:      'dGVzdC1jYXJkLXNpZw==',
+    };
+
+    it('happy path resolves via DNS SRV and returns 200', async () => {
+      mockLookupViaDnsSrv.mockResolvedValueOnce(DNSSRV_INDEX_RECORD);
+      mockFetchAgentCard.mockResolvedValueOnce(DNSSRV_AGENT_CARD);
+
+      const res = await fastify.inject({
+        method: 'GET',
+        url: '/api/v1/resolve?locator=scheduler%40nasiko.com%3Adnssrv',
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json<ResolveResponse>();
+      expect(body.resolution_mode).toBe('dnssrv');
+      expect(body.resolved_via).toBe('dns-srv:nasiko.com');
+      expect(body.index_record.agent_id).toBe('scheduler@nasiko.com');
+      expect(body.agent_card.id).toBe('scheduler@nasiko.com');
+      expect(mockLookupViaDnsSrv).toHaveBeenCalledWith('scheduler@nasiko.com', 'nasiko.com');
     });
 
-    expect(res.statusCode).toBe(404);
-    expect(res.json().error).toBe('no_srv_record');
+    it('returns 404 when DNS SRV record is absent', async () => {
+      mockLookupViaDnsSrv.mockRejectedValueOnce(
+        new DnsSrvError('no SRV record', 'no_srv_record'),
+      );
+
+      const res = await fastify.inject({
+        method: 'GET',
+        url: '/api/v1/resolve?locator=scheduler%40nasiko.com%3Adnssrv',
+      });
+
+      expect(res.statusCode).toBe(404);
+      expect(res.json().error).toBe('no_srv_record');
+    });
   });
 
-  it('returns 503 when :global NANDA Index and :dnssrv fallback both fail', async () => {
-    mockLookupNandaIndex.mockRejectedValueOnce(
-      new NandaIndexError('NANDA Index unreachable', 'unreachable'),
-    );
-    mockLookupViaDnsSrv.mockRejectedValueOnce(
-      new DnsSrvError('DNS SRV unreachable', 'unreachable'),
-    );
+  // ── :nandaindex.org mode ──────────────────────────────────────────────────
 
-    const res = await fastify.inject({
-      method: 'GET',
-      url: '/api/v1/resolve?locator=scheduler%40nasiko.com%3Aglobal',
+  describe(':nandaindex.org mode', () => {
+    const NANDA_INDEX_RECORD = {
+      agent_id:   'scheduler@nasiko.com',
+      agent_name: 'Scheduler Agent',
+      card_url:   'https://nasiko.com/agents/scheduler.json',
+      ttl:        3600,
+      signature:  'dGVzdC1zaWduYXR1cmU=',
+    };
+
+    const NANDA_AGENT_CARD = {
+      id:             'scheduler@nasiko.com',
+      display_name:   'Scheduler Agent',
+      description:    'Schedules meetings and tasks.',
+      capabilities:   ['schedule'],
+      invocation_url: 'https://nasiko.com/invoke/scheduler',
+      protocol:       'a2a',
+      visibility:     'public' as const,
+      signature:      'dGVzdC1jYXJkLXNpZw==',
+    };
+
+    it('resolves via named NANDA Index and returns 200', async () => {
+      mockLookupNandaIndex.mockResolvedValueOnce(NANDA_INDEX_RECORD);
+      mockFetchAgentCard.mockResolvedValueOnce(NANDA_AGENT_CARD);
+
+      const res = await fastify.inject({
+        method: 'GET',
+        url: '/api/v1/resolve?locator=scheduler%40nasiko.com%3Anandaindex.org',
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json<ResolveResponse>();
+      expect(body.resolution_mode).toBe('nandaindex.org');
+      expect(body.resolved_via).toBe('nandaindex.org');
+      expect(mockLookupNandaIndex).toHaveBeenCalledWith('scheduler@nasiko.com', 'nandaindex.org');
     });
 
-    expect(res.statusCode).toBe(503);
-    expect(res.json().error).toBe('unreachable');
+    it('returns 429 when NANDA Index rate-limits', async () => {
+      mockLookupNandaIndex.mockRejectedValueOnce(
+        new NandaIndexError('rate limited', 'rate_limited'),
+      );
+
+      const res = await fastify.inject({
+        method: 'GET',
+        url: '/api/v1/resolve?locator=scheduler%40nasiko.com%3Anandaindex.org',
+      });
+
+      expect(res.statusCode).toBe(429);
+      expect(res.json().error).toBe('rate_limited');
+    });
   });
 
-  it('returns 429 when NANDA Index rate-limits and :nandaindex.org mode is used', async () => {
-    mockLookupNandaIndex.mockRejectedValueOnce(
-      new NandaIndexError('rate limited', 'rate_limited'),
-    );
+  // ── Malformed / input errors ──────────────────────────────────────────────
 
-    const res = await fastify.inject({
-      method: 'GET',
-      url: '/api/v1/resolve?locator=scheduler%40nasiko.com%3Anandaindex.org',
+  describe('input validation', () => {
+    it('returns 400 when locator query param is missing', async () => {
+      const res = await fastify.inject({ method: 'GET', url: '/api/v1/resolve' });
+      expect(res.statusCode).toBe(400);
     });
 
-    expect(res.statusCode).toBe(429);
-    expect(res.json().error).toBe('rate_limited');
+    it('returns 400 with invalid_locator when mode suffix is missing', async () => {
+      const res = await fastify.inject({
+        method: 'GET',
+        url: '/api/v1/resolve?locator=scheduler%40nasiko.com',
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toBe('invalid_locator');
+    });
+
+    it('returns 400 with invalid_locator for unknown mode', async () => {
+      const res = await fastify.inject({
+        method: 'GET',
+        url: '/api/v1/resolve?locator=scheduler%40nasiko.com%3Ahttp',
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toBe('invalid_locator');
+    });
   });
 
-  it('returns 502 when AgentCard is malformed', async () => {
-    mockLookupNandaIndex.mockResolvedValueOnce(TEST_INDEX_RECORD);
-    mockFetchAgentCard.mockRejectedValueOnce(
-      new AgentCardError('missing required fields', 'malformed'),
-    );
+  // ── AgentCard error paths ─────────────────────────────────────────────────
 
-    const res = await fastify.inject({
-      method: 'GET',
-      url: '/api/v1/resolve?locator=scheduler%40nasiko.com%3Aglobal',
+  describe('AgentCard fetch errors (:nandaindex.org)', () => {
+    const NANDA_INDEX_RECORD = {
+      agent_id:   'scheduler@nasiko.com',
+      agent_name: 'Scheduler Agent',
+      card_url:   'https://nasiko.com/agents/scheduler.json',
+      ttl:        3600,
+      signature:  'dGVzdC1zaWduYXR1cmU=',
+    };
+
+    it('returns 502 when AgentCard is malformed', async () => {
+      mockLookupNandaIndex.mockResolvedValueOnce(NANDA_INDEX_RECORD);
+      mockFetchAgentCard.mockRejectedValueOnce(
+        new AgentCardError('missing required fields', 'malformed'),
+      );
+
+      const res = await fastify.inject({
+        method: 'GET',
+        url: '/api/v1/resolve?locator=scheduler%40nasiko.com%3Anandaindex.org',
+      });
+
+      expect(res.statusCode).toBe(502);
+      expect(res.json().error).toBe('card_malformed');
     });
 
-    expect(res.statusCode).toBe(502);
-    expect(res.json().error).toBe('card_malformed');
-  });
+    it('returns 503 when AgentCard URL is unreachable', async () => {
+      mockLookupNandaIndex.mockResolvedValueOnce(NANDA_INDEX_RECORD);
+      mockFetchAgentCard.mockRejectedValueOnce(
+        new AgentCardError('card URL unreachable', 'unreachable'),
+      );
 
-  it('returns 503 when AgentCard URL is unreachable', async () => {
-    mockLookupNandaIndex.mockResolvedValueOnce(TEST_INDEX_RECORD);
-    mockFetchAgentCard.mockRejectedValueOnce(
-      new AgentCardError('card URL unreachable', 'unreachable'),
-    );
+      const res = await fastify.inject({
+        method: 'GET',
+        url: '/api/v1/resolve?locator=scheduler%40nasiko.com%3Anandaindex.org',
+      });
 
-    const res = await fastify.inject({
-      method: 'GET',
-      url: '/api/v1/resolve?locator=scheduler%40nasiko.com%3Aglobal',
+      expect(res.statusCode).toBe(503);
+      expect(res.json().error).toBe('unreachable');
     });
-
-    expect(res.statusCode).toBe(503);
-    expect(res.json().error).toBe('unreachable');
   });
 });

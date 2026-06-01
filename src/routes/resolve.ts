@@ -21,7 +21,7 @@ interface ResolveQuerystring {
  *   400  bad_request from NANDA Index
  *   404  not_found | no_srv_record
  *   429  rate_limited
- *   502  card_malformed
+ *   502  card_malformed | signature_invalid
  *   503  unreachable
  */
 export async function registerResolveRoute(fastify: FastifyInstance): Promise<void> {
@@ -68,12 +68,13 @@ export async function registerResolveRoute(fastify: FastifyInstance): Promise<vo
         if (!(err instanceof ResolutionError)) throw err;
 
         const statusMap: Record<ResolutionError['code'], number> = {
-          not_found:     404,
-          no_srv_record: 404,
-          bad_request:   400,
-          rate_limited:  429,
-          card_malformed: 502,
-          unreachable:   503,
+          not_found:        404,
+          no_srv_record:    404,
+          bad_request:      400,
+          rate_limited:     429,
+          card_malformed:   502,
+          signature_invalid: 502,
+          unreachable:      503,
         };
 
         return reply.status(statusMap[err.code]).send({

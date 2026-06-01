@@ -116,3 +116,33 @@ export function verifyCanonical(
     algorithm,
   );
 }
+
+/**
+ * Derives the public key PEM from a private key PEM.
+ * Used by the resolver to verify EntityOwner root signatures without
+ * requiring a separate public key env var.
+ */
+export function derivePublicKey(privateKeyPem: string): string {
+  return createPublicKey(privateKeyPem).export({ type: 'spki', format: 'pem' }) as string;
+}
+
+/**
+ * Verifies an AgentCard signature per §2.5 of the NANDA Layer 2 spec.
+ *
+ * AgentCards use `signature` as the signature field (not `signature_value`).
+ * Strips `signature` before canonicalizing — the signature must not sign itself.
+ *
+ * @param card          - AgentCard as a plain object
+ * @param signatureB64  - base64-encoded signature from the card's `signature` field
+ * @param publicKeyPem  - EntityOwner public key (PEM) from the GARR registry
+ * @param algorithm     - signing algorithm declared in the EntityOwner record
+ */
+export function verifyAgentCardSignature(
+  card: Record<string, unknown>,
+  signatureB64: string,
+  publicKeyPem: string,
+  algorithm: SigningAlgorithm,
+): boolean {
+  const { signature: _strip, ...payload } = card;
+  return verifySignature(canonicalize(payload), signatureB64, publicKeyPem, algorithm);
+}
