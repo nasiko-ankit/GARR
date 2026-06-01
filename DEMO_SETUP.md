@@ -179,22 +179,40 @@ You should see:
 - A green **"Pre-flight OK · Backend is seeded and reachable"** badge
 - Three step cards: **Register a Registry**, **Register an Agent**, **A2A Card Exchange**
 
-### Step A — A2A Card Exchange (the headline narrative)
+> **About the pre-seed.** The seed script in section 6 already registers two organisations (`google.demo` and `meta.demo`) into the Nanda Index so the A2A Card Exchange in Step C has data to resolve. Step A below registers a **third** organisation live in the UI to demonstrate the registry-onboarding flow itself.
 
-1. Click **"Open A2A Card Exchange"**.
-2. Inputs are pre-filled: `search-agent@google.demo:global` ↔ `products-agent@meta.demo:global`.
-3. Click **"Run A2A exchange"**.
+### Step A — Register a Registry
 
-Expected result:
-- Both columns turn green.
-- Each shows six narration lines, all ticked (Querying Nanda → RAP URL → Fetching AgentCard → AgentCard received → Verifying signature → Signature valid, verified by `google-agent-root-demo` / `meta-agent-root-demo`).
-- Each column renders the **IndexRecord** JSON (what the Nanda Index returned) and the **AgentCard** JSON (what the registry signed).
-- At the bottom: a big green **"Exchange complete · search-agent@google.demo ⇄ products-agent@meta.demo"** card. Both `invocation_url` values are shown.
+This step demonstrates how a brand-new organisation onboards itself into the Nanda Index.
+
+1. Click **"Open Register Registry"**.
+2. Fill in any new org. Example:
+   - Owner ID: `acme`
+   - Display Name: `Acme Corp`
+   - Domain: `acme.demo`
+   - Contact Email: `registrar@acme.demo`
+   - RAP URL: `http://localhost:4003` (no RAP needs to be running there — demo mode skips reachability)
+   - Key ID: `acme-root`
+   - TTL: `86400`
+3. Click **"Generate keypair"** — the public key fills in automatically. The private key stays in the browser.
+4. Click **"Submit registration"**. The page moves to step 2 of 2 (the challenge nonce).
+5. Click **"Sign automatically"**. The signature appears.
+6. Click **"Verify & complete"**.
+
+Expected:
+- Green **"Registration complete"** panel with the signed serial number and expiry.
+
+You can confirm via curl in any terminal:
+```powershell
+curl http://localhost:3000/api/v1/owners/acme
+```
 
 ### Step B — Register an Agent
 
+This step adds a new agent into an already-registered organisation. The registry signs the AgentCard with its own Ed25519 root key.
+
 1. Click **"Open Register Agent"** (or go through the dashboard).
-2. The registry dropdown should list **`Google — google.demo (http://localhost:4001)`** and **`Meta — meta.demo (http://localhost:4002)`**.
+2. The registry dropdown should list **`Google — google.demo (http://localhost:4001)`** and **`Meta — meta.demo (http://localhost:4002)`** (both pre-seeded in section 6).
 3. Pick **Google** and fill in:
    - Agent name: `analytics-agent`
    - Display name: `Analytics Agent`
@@ -207,32 +225,23 @@ Expected result:
 Expected:
 - A green panel: **"Agent registered and signed"** with `agent_id: google/analytics-agent` and `signed_by: google-agent-root-demo`.
 - Below it, the full signed AgentCard JSON.
-- A deep-link: **"Try it on A2A Card Exchange"** — click it.
-- The A2A Card Exchange page opens with Agent A pre-filled to your new locator (`analytics-agent@google.demo:global`) and auto-resolves successfully.
+- A deep-link: **"Try it on A2A Card Exchange"** — click it to confirm the new agent is immediately resolvable through the Nanda Index.
 
-### Step C — Register a Registry
+### Step C — A2A Card Exchange (the headline narrative)
 
-1. Click **"Open Register Registry"**.
-2. Fill in any new org. Example:
-   - Owner ID: `acme`
-   - Display Name: `Acme Corp`
-   - Domain: `acme.demo`
-   - Contact Email: `registrar@acme.demo`
-   - RAP URL: `http://localhost:4003` (no RAP needs to be running there — demo mode skips reachability)
-   - Key ID: `acme-root`
-   - TTL: `86400`
-3. Click **"Generate keypair"** — the public key fills in automatically.
-4. Click **"Submit registration"**. The page moves to step 2 of 2 (the challenge nonce).
-5. Click **"Sign automatically"**. The signature appears.
-6. Click **"Verify & complete"**.
+This step shows two agents in different organisations discovering each other through the Nanda Index and exchanging their signed AgentCards.
 
-Expected:
-- Green **"Registration complete"** panel with the signed serial number and expiry.
+1. Click **"Open A2A Card Exchange"**.
+2. Inputs are pre-filled: `search-agent@google.demo:global` ↔ `products-agent@meta.demo:global`.
+3. Click **"Run A2A exchange"**.
 
-You can confirm via curl in any terminal:
-```powershell
-curl http://localhost:3000/api/v1/owners/acme
-```
+Expected result:
+- Both columns turn green.
+- Each shows six narration lines, all ticked (Querying Nanda → RAP URL → Fetching AgentCard → AgentCard received → Verifying signature → Signature valid, verified by `google-agent-root-demo` / `meta-agent-root-demo`).
+- Each column renders the **IndexRecord** JSON (what the Nanda Index returned) and the **AgentCard** JSON (what the registry signed).
+- At the bottom: a big green **"Exchange complete · search-agent@google.demo ⇄ products-agent@meta.demo"** card. Both `invocation_url` values are shown.
+
+Optional extra: replace one of the locators with **`analytics-agent@google.demo:global`** (the agent you registered in Step B) and click **"Resolve this side"** — the agent you just created is also resolvable, proving Step B → Step C end-to-end.
 
 ---
 
