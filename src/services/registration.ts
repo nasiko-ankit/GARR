@@ -1,6 +1,6 @@
 import { buildConfig } from '../config/index.js';
 import { findByOwnerId, findByDomain, insertEntityOwner } from '../db/queries/entityOwners.js';
-import { upsertPending, findPending, deletePending } from '../db/queries/pendingRegistrations.js';
+import { upsertPending, findPending, deletePending, deleteExpiredPending } from '../db/queries/pendingRegistrations.js';
 import { insertAuditLog } from '../db/queries/auditLog.js';
 import { verifyDmarcTxt } from '../lib/dnsVerification.js';
 import { headRap } from '../lib/rapVerification.js';
@@ -96,6 +96,10 @@ export async function initiateRegistration(
       detail: (err as Error).message,
     };
   }
+
+  // Lazy GC: purge all expired pending rows on each new registration attempt.
+  // Prevents indefinite accumulation of rows that will never be completed.
+  await deleteExpiredPending();
 
   const challengeNonce = generateChallengeNonce();
   const challengeExpiresAt = new Date(Date.now() + CHALLENGE_TTL_MS);
@@ -197,6 +201,19 @@ export async function completeRegistration(
   // this owner_id. First registration has no prior serial, so YYYYMMDD00 is valid.
   const serial = generateSerial();
 
+  // §9.3 — monotonicity guard: reject if the generated serial does not beat the
+  // last accepted serial. Defense-in-depth — initiateRegistration blocks re-registration
+  // via 409, but this catches race conditions or admin-bypass scenarios.
+  const existingOwner = await findByOwnerId(ownerId);
+  if (existingOwner && serial <= existingOwner.serial) {
+    return {
+      ok: false,
+      statusCode: 422,
+      error: 'serial_not_monotonic',
+      detail: `Generated serial '${serial}' must be strictly greater than the last accepted serial '${existingOwner.serial}'. §9.3`,
+    };
+  }
+
   // §4.5 — sign the canonical wire-shape projection of the EntityOwner record.
   // signCanonical strips signature_value before signing.
   const wirePayload: Record<string, unknown> = {
@@ -241,7 +258,8 @@ export async function completeRegistration(
   await insertAuditLog({
     ownerId: pending.ownerId,
     action: 'register',
-    actorIp: ip,
+    actor: pending.ownerId,
+    ipAddress: ip ?? null,
     diff: { serial_new: serial },
   });
 

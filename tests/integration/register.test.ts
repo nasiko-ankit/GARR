@@ -1,6 +1,7 @@
 import { vi, describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import {
   generateKeyPairSync,
+  randomBytes,
   sign as cryptoSign,
   createPrivateKey,
 } from 'node:crypto';
@@ -26,6 +27,7 @@ const { privateKey, publicKey } = generateKeyPairSync('ed25519', {
 
 const TEST_OWNER_ID = 'test-reg-org';
 const TEST_DOMAIN = 'test-reg.example.com';
+const STALE_OWNER_ID = 'test-stale-pending';
 
 const validBody = {
   owner_id: TEST_OWNER_ID,
@@ -38,10 +40,13 @@ const validBody = {
   key_id: 'test-key-1',
 };
 
-/** Signs the nonce with our test private key (same algorithm the service uses to verify). */
+/** Signs the nonce with our test private key (same algorithm the service uses to verify).
+ * The nonce is a 64-char hex string; the service verifies over the raw 32 bytes it decodes to,
+ * so we decode with 'hex' here to match. §9.1 key challenge — sign raw nonce bytes.
+ */
 function signNonce(nonce: string): string {
   const key = createPrivateKey(privateKey);
-  return cryptoSign(null, Buffer.from(nonce, 'utf8'), key).toString('base64');
+  return cryptoSign(null, Buffer.from(nonce, 'hex'), key).toString('base64');
 }
 
 describe('register routes', () => {
@@ -65,7 +70,7 @@ describe('register routes', () => {
     const sql = getSql();
     await sql`DELETE FROM audit_log            WHERE owner_id = ${TEST_OWNER_ID}`;
     await sql`DELETE FROM entity_owners        WHERE owner_id = ${TEST_OWNER_ID}`;
-    await sql`DELETE FROM pending_registrations WHERE owner_id = ${TEST_OWNER_ID}`;
+    await sql`DELETE FROM pending_registrations WHERE owner_id IN (${TEST_OWNER_ID}, ${STALE_OWNER_ID})`;
   });
 
   // ─── Schema validation (unchanged from 501 stage) ────────────────────────
@@ -251,6 +256,84 @@ describe('register routes', () => {
       expect(res.statusCode).toBe(422);
       expect(res.json().error).toBe('signature_invalid');
     });
+
+    it('returns 422 serial_not_monotonic when generated serial does not beat existing (§9.3)', async () => {
+      const sql = getSql();
+      const knownNonce = randomBytes(32).toString('hex');
+      const challengeExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+      const now = new Date();
+
+      // Seed pending row with a known nonce, bypassing initiateRegistration
+      await sql`
+        INSERT INTO pending_registrations (
+          owner_id, display_name, domain, contact_email,
+          rap_url, algorithm, public_key, key_id,
+          ttl_seconds, dmarc_policy, challenge_nonce, challenge_expires_at
+        ) VALUES (
+          ${TEST_OWNER_ID}, 'Test Reg Org', ${TEST_DOMAIN},
+          'admin@test-reg.example.com',
+          'https://test-reg.example.com/agents.json',
+          'ed25519', ${publicKey}, 'test-key-1',
+          86400, 'v=DMARC1; p=reject', ${knownNonce}, ${challengeExpiresAt}
+        )
+      `;
+
+      // Seed entity_owner with a serial that today's YYYYMMDD00 can never beat
+      await sql`
+        INSERT INTO entity_owners (
+          owner_id, display_name, domain, contact_email,
+          rap_url, algorithm, public_key, key_id,
+          dmarc_policy, serial, status, issued_at, expires_at,
+          signature_value, signed_by
+        ) VALUES (
+          ${TEST_OWNER_ID}, 'Test Reg Org', ${TEST_DOMAIN},
+          'admin@test-reg.example.com',
+          'https://test-reg.example.com/agents.json',
+          'ed25519', ${publicKey}, 'test-key-1',
+          'v=DMARC1; p=reject', '9999123100', 'active',
+          ${now}, ${new Date(now.getTime() + 86400_000)},
+          'dGVzdA==', 'garr-dev-unspecified'
+        )
+      `;
+
+      const res = await fastify.inject({
+        method: 'POST',
+        url: `/api/v1/register/${TEST_OWNER_ID}/verify`,
+        payload: { challenge_signature: signNonce(knownNonce) },
+      });
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error).toBe('serial_not_monotonic');
+    });
+  });
+
+  // ─── Expired pending cleanup ─────────────────────────────────────────────
+
+  it('deletes expired pending rows for all owner_ids on each new registration attempt', async () => {
+    const sql = getSql();
+
+    // Insert an already-expired pending row for a bystander owner_id
+    const expiredAt = new Date(Date.now() - 1000); // 1 second in the past
+    await sql`
+      INSERT INTO pending_registrations (
+        owner_id, display_name, domain, contact_email,
+        rap_url, algorithm, public_key, key_id,
+        ttl_seconds, dmarc_policy, challenge_nonce, challenge_expires_at
+      ) VALUES (
+        ${STALE_OWNER_ID}, 'Stale Org', 'stale.example.com',
+        'admin@stale.example.com',
+        'https://stale.example.com/agents.json',
+        'ed25519', ${publicKey}, 'test-key-1',
+        86400, 'v=DMARC1; p=reject',
+        ${'a'.repeat(64)}, ${expiredAt}
+      )
+    `;
+
+    // Trigger a new registration attempt for TEST_OWNER_ID — this runs deleteExpiredPending()
+    await fastify.inject({ method: 'POST', url: '/api/v1/register', payload: validBody });
+
+    // The stale row must be gone
+    const rows = await sql`SELECT 1 FROM pending_registrations WHERE owner_id = ${STALE_OWNER_ID}`;
+    expect(rows).toHaveLength(0);
   });
 
   // ─── Full round-trip ─────────────────────────────────────────────────────

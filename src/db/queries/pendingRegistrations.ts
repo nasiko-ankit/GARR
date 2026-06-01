@@ -74,3 +74,14 @@ export async function deletePending(ownerId: string): Promise<void> {
   const sql = getSql();
   await sql`DELETE FROM pending_registrations WHERE owner_id = ${ownerId}`;
 }
+
+/**
+ * Deletes all expired pending registrations (challenge_expires_at < NOW()).
+ * Called on each new registration attempt as lazy GC — prevents indefinite
+ * accumulation of rows that will never be completed.
+ * Uses the idx_pending_registrations_expires_at index, so cost is low.
+ */
+export async function deleteExpiredPending(): Promise<void> {
+  const sql = getSql();
+  await sql`DELETE FROM pending_registrations WHERE challenge_expires_at < NOW()`;
+}
