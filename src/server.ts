@@ -52,6 +52,10 @@ export async function buildServer(options: BuildServerOptions = {}) {
 async function main(): Promise<void> {
   const { fastify, config } = await buildServer();
 
+  if (config.demoMode) {
+    fastify.log.warn('DEMO MODE ACTIVE — verification disabled');
+  }
+
   // Graceful shutdown — fastify.close() drains connections via onClose hooks
   // (CLAUDE.md §461–468)
   const shutdown = async () => {

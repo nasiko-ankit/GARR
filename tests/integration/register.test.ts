@@ -82,11 +82,11 @@ describe('register routes', () => {
       expect(res.statusCode).toBe(400);
     });
 
-    it('rejects 400 when rap_url is not https', async () => {
+    it('rejects 400 when rap_url is not a URI', async () => {
       const res = await fastify.inject({
         method: 'POST',
         url: '/api/v1/register',
-        payload: { ...validBody, rap_url: 'http://test-reg.example.com/agents.json' },
+        payload: { ...validBody, rap_url: 'not-a-url' },
       });
       expect(res.statusCode).toBe(400);
     });

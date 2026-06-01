@@ -39,10 +39,10 @@ export const registerRequestSchema = {
     display_name: { type: 'string', minLength: 1, maxLength: 200 },
     domain: { type: 'string', format: 'hostname', minLength: 4, maxLength: 253 },
     contact_email: { type: 'string', format: 'email', maxLength: 254 },
-    rap_url: { type: 'string', format: 'uri', pattern: '^https://', maxLength: 2048 },
+    rap_url: { type: 'string', format: 'uri', pattern: '^https?://', maxLength: 2048 },
     rap_fallback: {
       anyOf: [
-        { type: 'string', format: 'uri', pattern: '^https://', maxLength: 2048 },
+        { type: 'string', format: 'uri', pattern: '^https?://', maxLength: 2048 },
         { type: 'null' },
       ],
     },
