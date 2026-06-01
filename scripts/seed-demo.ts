@@ -29,28 +29,20 @@ interface OrgDef {
 
 const ORGS: OrgDef[] = [
   {
-    owner_id: 'acme',
-    display_name: 'Acme Corp',
-    domain: 'acme.demo',
-    contact_email: 'registrar@acme.demo',
+    owner_id: 'google',
+    display_name: 'Google',
+    domain: 'google.demo',
+    contact_email: 'registrar@google.demo',
     rap_url: 'http://localhost:4001',
-    key_id: 'acme-agent-root-demo',
+    key_id: 'google-agent-root-demo',
   },
   {
-    owner_id: 'globex',
-    display_name: 'Globex Inc',
-    domain: 'globex.demo',
-    contact_email: 'registrar@globex.demo',
+    owner_id: 'meta',
+    display_name: 'Meta',
+    domain: 'meta.demo',
+    contact_email: 'registrar@meta.demo',
     rap_url: 'http://localhost:4002',
-    key_id: 'globex-agent-root-demo',
-  },
-  {
-    owner_id: 'initech',
-    display_name: 'Initech LLC',
-    domain: 'initech.demo',
-    contact_email: 'registrar@initech.demo',
-    rap_url: 'http://localhost:4003',
-    key_id: 'initech-agent-root-demo',
+    key_id: 'meta-agent-root-demo',
   },
 ];
 

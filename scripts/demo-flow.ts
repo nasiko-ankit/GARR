@@ -108,9 +108,8 @@ async function main(): Promise<void> {
   console.log(`Server: ${GARR_BASE}\n`);
 
   const locators = [
-    'billing-agent@acme.demo:global',
-    'inventory-agent@globex.demo:global',
-    'hr-agent@initech.demo:global',
+    'search-agent@google.demo:global',
+    'products-agent@meta.demo:global',
   ];
 
   for (const locator of locators) {

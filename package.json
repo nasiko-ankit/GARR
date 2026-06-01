@@ -15,9 +15,9 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "migrate": "tsx --env-file=.env src/db/migrate.ts",
-    "demo:seed": "GARR_DEMO_MODE=true tsx --env-file=.env scripts/seed-demo.ts",
+    "demo:seed": "cross-env GARR_DEMO_MODE=true tsx --env-file=.env scripts/seed-demo.ts",
     "demo:rap": "tsx scripts/mock-rap.ts",
-    "demo:run": "GARR_DEMO_MODE=true tsx --env-file=.env scripts/demo-flow.ts"
+    "demo:run": "cross-env GARR_DEMO_MODE=true tsx --env-file=.env scripts/demo-flow.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",

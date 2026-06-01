@@ -16,3 +16,5 @@ PROGRESS.md
 
 # Demo private keys — never commit
 .keys.demo.json
+dev-signing.pem
+dev-signing.pub.pem
