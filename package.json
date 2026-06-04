@@ -15,9 +15,13 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "migrate": "tsx --env-file=.env src/db/migrate.ts",
-    "demo:seed": "cross-env GARR_DEMO_MODE=true tsx --env-file=.env scripts/seed-demo.ts",
+    "demo:seed": "GARR_DEMO_MODE=true tsx --env-file=.env scripts/seed-demo.ts",
     "demo:rap": "tsx scripts/mock-rap.ts",
-    "demo:run": "cross-env GARR_DEMO_MODE=true tsx --env-file=.env scripts/demo-flow.ts"
+    "demo:run": "GARR_DEMO_MODE=true tsx --env-file=.env scripts/demo-flow.ts",
+    "a2a:rap:weather": "tsx scripts/a2a/rap-weathercorp.ts",
+    "a2a:rap:translate": "tsx scripts/a2a/rap-translatehub.ts",
+    "a2a:weather": "tsx scripts/a2a/weather-agent.ts",
+    "a2a:translator": "tsx scripts/a2a/translator-agent.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
