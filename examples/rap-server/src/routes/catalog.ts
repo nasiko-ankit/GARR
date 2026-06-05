@@ -47,8 +47,9 @@ export async function registerCatalogRoute(app: FastifyInstance): Promise<void> 
   app.get('/agents.json', async (req, reply) => {
     const sql     = getSql();
     const cfg     = getConfig();
-    const isAdmin = (req.headers['authorization'] as string | undefined)
-      ?.includes(cfg.adminApiKey) ?? false;
+    const authHeader = (req.headers['authorization'] as string | undefined) ?? '';
+    const token      = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    const isAdmin    = token.length > 0 && token === cfg.adminApiKey;
 
     const rows = isAdmin
       ? await sql<AgentRow[]>`SELECT * FROM agents ORDER BY created_at ASC`
