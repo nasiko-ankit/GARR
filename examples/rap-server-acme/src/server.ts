@@ -5,9 +5,10 @@ import rateLimit         from '@fastify/rate-limit';
 import { getConfig }     from './config.js';
 import { closeDb }       from './db.js';
 import { runMigrations } from './migrate.js';
-import { registerHealthRoute  } from './routes/health.js';
-import { registerCatalogRoute } from './routes/catalog.js';
-import { registerAgentRoutes  } from './routes/agents.js';
+import { registerHealthRoute    } from './routes/health.js';
+import { registerCatalogRoute  } from './routes/catalog.js';
+import { registerAgentRoutes   } from './routes/agents.js';
+import { registerWellKnownRoutes } from './routes/wellKnown.js';
 
 export async function buildServer() {
   const cfg = getConfig();
@@ -46,6 +47,7 @@ export async function buildServer() {
 
   // Routes
   await registerHealthRoute(app);
+  await registerWellKnownRoutes(app);
   await registerCatalogRoute(app);
   await registerAgentRoutes(app);
 
