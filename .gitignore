@@ -13,8 +13,15 @@ coverage/
 examples/rap-server/node_modules
 examples/rap-server-acme/node_modules
 
-# Unzipped agent code — derived from zip files already in repo
+# macOS zip extraction metadata — never commit
+**/__MACOSX
+__MACOSX
 
+# Python bytecode and caches
+**/__pycache__
+*.pyc
+*.pyo
+**/.ruff_cache
 
 # Local-only: internal working docs and source specs
 CLAUDE.md
