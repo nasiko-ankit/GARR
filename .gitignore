@@ -9,6 +9,20 @@ coverage/
 .vscode/
 .idea/
 
+# Explicit node_modules paths (covers symlinks which trailing-slash pattern misses)
+examples/rap-server/node_modules
+examples/rap-server-acme/node_modules
+
+# macOS zip extraction metadata — never commit
+**/__MACOSX
+__MACOSX
+
+# Python bytecode and caches
+**/__pycache__
+*.pyc
+*.pyo
+**/.ruff_cache
+
 # Local-only: internal working docs and source specs
 CLAUDE.md
 PROGRESS.md
@@ -16,3 +30,4 @@ PROGRESS.md
 
 # Demo private keys — never commit
 .keys.demo.json
+
