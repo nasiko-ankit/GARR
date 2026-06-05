@@ -74,7 +74,7 @@ export function buildConfig(): Config {
       ),
     },
     signing: {
-      privateKey: requireEnv('SIGNING_PRIVATE_KEY'),
+      privateKey: requireEnv('SIGNING_PRIVATE_KEY').replace(/\\n/g, '\n'),
       keyId: optionalEnv('SIGNING_KEY_ID', 'garr-dev-unspecified'),
     },
   };
