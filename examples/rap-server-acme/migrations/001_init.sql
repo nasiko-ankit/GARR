@@ -32,14 +32,5 @@ CREATE TABLE agent_audit (
   created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
-CREATE OR REPLACE FUNCTION set_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER agents_updated_at
-  BEFORE UPDATE ON agents
-  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+-- updated_at is managed by the application (set explicitly in every UPDATE statement)
+-- so that the value signed into the AgentCard matches what is stored in the DB.

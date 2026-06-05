@@ -33,7 +33,7 @@ interface AgentBody {
   visibility?:    'public' | 'private';
 }
 
-function validate(body: Partial<AgentBody>): string[] {
+function validate(body: Partial<AgentBody>, nodeEnv: string): string[] {
   const errors: string[] = [];
   if (!SLUG_RE.test(body.name ?? ''))
     errors.push('name: must match /^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$/ (lowercase, hyphens only)');
@@ -42,7 +42,7 @@ function validate(body: Partial<AgentBody>): string[] {
   if (!Array.isArray(body.capabilities) || body.capabilities.length === 0 ||
       body.capabilities.some(c => typeof c !== 'string'))
     errors.push('capabilities: must be a non-empty string[]');
-  const isDevMode = process.env.NODE_ENV !== 'production';
+  const isDevMode = nodeEnv !== 'production';
   const validUrl = body.invocation_url?.startsWith('https://') ||
     (isDevMode && body.invocation_url?.startsWith('http://'));
   if (!validUrl)
@@ -126,7 +126,7 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
   // Requires admin key. Server signs the AgentCard automatically.
   app.post('/agents', { preHandler: requireAdmin }, async (req, reply) => {
     const body   = req.body as Partial<AgentBody>;
-    const errors = validate(body);
+    const errors = validate(body, cfg.nodeEnv);
     if (errors.length) {
       return reply.status(422).send({ error: 'validation_failed', details: errors });
     }
@@ -188,7 +188,7 @@ export async function registerAgentRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const merged: AgentBody = { ...(body as AgentBody), name: slug };
-    const errors = validate(merged);
+    const errors = validate(merged, cfg.nodeEnv);
     if (errors.length) {
       return reply.status(422).send({ error: 'validation_failed', details: errors });
     }
