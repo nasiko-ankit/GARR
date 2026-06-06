@@ -26,6 +26,10 @@ __MACOSX
 # Local-only: internal working docs and source specs
 CLAUDE.md
 PROGRESS.md
+DEMO.md
+ARCHITECTURE.md
+HANDOFF.md
+*.postman_collection.json
 *.docx
 
 # Private keys and key stores — never commit
