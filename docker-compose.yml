@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: garr-postgres
+    environment:
+      POSTGRES_USER: garr
+      POSTGRES_PASSWORD: garr
+      POSTGRES_DB: garr
+    ports:
+      # Host 5433 -> container 5432. Avoids clash with a native Postgres
+      # that many macOS devs have running on host 5432.
+      - "5433:5432"
+    volumes:
+      - garr-postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U garr -d garr"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  garr-postgres-data:
