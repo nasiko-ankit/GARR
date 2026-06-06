@@ -28,6 +28,10 @@ CLAUDE.md
 PROGRESS.md
 *.docx
 
-# Demo private keys — never commit
-.keys.demo.json
+# Private keys and key stores — never commit
+*.pem
+*.key
+*.p12
+*.pfx
+.keys.*.json
 
