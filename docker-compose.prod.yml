@@ -1,0 +1,67 @@
+services:
+
+  # ── GARR index database ────────────────────────────────────────────────────
+  garr-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: garr
+      POSTGRES_USER: garr
+      POSTGRES_PASSWORD: ${GARR_POSTGRES_PASSWORD}
+    volumes:
+      - garr_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U garr -d garr"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── GARR API (global agent index) ────────────────────────────────────────
+  garr-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://garr:${GARR_POSTGRES_PASSWORD}@garr-postgres:5432/garr
+      SIGNING_PRIVATE_KEY: ${GARR_SIGNING_PRIVATE_KEY}
+      SIGNING_KEY_ID: ${GARR_SIGNING_KEY_ID:-garr-prod-2026}
+      DB_MAX_CONNECTIONS: ${DB_MAX_CONNECTIONS:-20}
+    depends_on:
+      garr-postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── garr-web (Next.js frontend) ───────────────────────────────────────────
+  garr-web:
+    build:
+      context: ../garr-web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_GARR_API_BASE_URL: ${NEXT_PUBLIC_GARR_API_BASE_URL}
+    environment:
+      PORT: 3001
+      HOSTNAME: 0.0.0.0
+    restart: unless-stopped
+
+  # ── Caddy reverse proxy ───────────────────────────────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - garr-api
+      - garr-web
+    restart: unless-stopped
+
+volumes:
+  garr_postgres_data:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,9 @@
+# Port 80  — garr-web (Next.js frontend)
+:80 {
+	reverse_proxy garr-web:3001
+}
+
+# Port 8080 — GARR API (global agent index)
+:8080 {
+	reverse_proxy garr-api:3000
+}
