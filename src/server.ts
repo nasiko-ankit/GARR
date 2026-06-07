@@ -5,11 +5,15 @@ import { registerErrorHandler } from './plugins/errorHandler.js';
 import { registerCors } from './plugins/cors.js';
 import { registerDb } from './plugins/db.js';
 import { registerSwagger } from './plugins/swagger.js';
+import { registerCookiePlugin } from './plugins/cookie.js';
+import { registerJwtPlugin } from './plugins/jwt.js';
+import { registerOAuthPlugin } from './plugins/oauth.js';
 import { registerHealthRoute } from './routes/health.js';
-import { registerRegisterRoutes } from './routes/register.js';
-import { registerOwnersRoutes } from './routes/owners.js';
+import { registerAuthRoutes } from './routes/auth.js';
+import { registerIndexRecordRoutes } from './routes/index-records.js';
+import { registerOrgRoutes } from './routes/orgs.js';
+import { registerMeRoute } from './routes/me.js';
 import { registerSearchRoutes } from './routes/search.js';
-import { registerManifestRoute } from './routes/manifest.js';
 import { registerResolveRoute } from './routes/resolve.js';
 
 export interface BuildServerOptions {
@@ -34,16 +38,20 @@ export async function buildServer(options: BuildServerOptions = {}) {
   await registerErrorHandler(fastify);
   await registerCors(fastify);
   await registerDb(fastify);
+  await registerCookiePlugin(fastify);
+  await registerJwtPlugin(fastify);
+  await registerOAuthPlugin(fastify);
 
-  // Swagger must register before routes — schemas snapshot at route registration time
+  // Swagger must register before routes
   await registerSwagger(fastify);
 
   // Routes
   await registerHealthRoute(fastify);
-  await registerRegisterRoutes(fastify);
-  await registerOwnersRoutes(fastify);
+  await registerAuthRoutes(fastify);
+  await registerIndexRecordRoutes(fastify);
+  await registerOrgRoutes(fastify);
+  await registerMeRoute(fastify);
   await registerSearchRoutes(fastify);
-  await registerManifestRoute(fastify);
   await registerResolveRoute(fastify);
 
   return { fastify, config };
@@ -52,12 +60,6 @@ export async function buildServer(options: BuildServerOptions = {}) {
 async function main(): Promise<void> {
   const { fastify, config } = await buildServer();
 
-  if (config.demoMode) {
-    fastify.log.warn('DEMO MODE ACTIVE — verification disabled');
-  }
-
-  // Graceful shutdown — fastify.close() drains connections via onClose hooks
-  // (CLAUDE.md §461–468)
   const shutdown = async () => {
     await fastify.close();
     process.exit(0);
@@ -68,7 +70,6 @@ async function main(): Promise<void> {
   await fastify.listen({ port: config.port, host: '0.0.0.0' });
 }
 
-// Only run when this file is the direct entry point, not when imported by tests
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   main().catch((err) => {
     console.error(err);

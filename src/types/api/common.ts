@@ -1,11 +1,3 @@
-/**
- * Shared API primitives used by every endpoint family.
- *
- * `ApiError` is the wire shape every non-2xx response returns
- * (CLAUDE.md §384–407). `OwnerIdParams` is the URL parameter shape
- * for any path containing `:owner_id`.
- */
-
 export interface ApiError {
   error: string;
   detail?: string;
@@ -17,25 +9,25 @@ export const apiErrorSchema = {
   required: ['error'],
   additionalProperties: false,
   properties: {
-    error: { type: 'string' },
-    detail: { type: 'string' },
+    error:    { type: 'string' },
+    detail:   { type: 'string' },
     endpoint: { type: 'string' },
   },
 } as const;
 
-export interface OwnerIdParams {
-  owner_id: string;
+export interface OrgIdParams {
+  org_id: string;
 }
 
-export const ownerIdParamsSchema = {
+export const orgIdParamsSchema = {
   type: 'object',
-  required: ['owner_id'],
+  required: ['org_id'],
   additionalProperties: false,
   properties: {
-    owner_id: {
+    org_id: {
       type: 'string',
-      pattern: '^[a-z0-9-]+$',
-      minLength: 3,
+      pattern: '^[a-z0-9][a-z0-9-]*[a-z0-9]$',
+      minLength: 2,
       maxLength: 64,
     },
   },

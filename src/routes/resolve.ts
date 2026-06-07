@@ -9,79 +9,59 @@ interface ResolveQuerystring {
 }
 
 /**
- * Resolver endpoint (§15–17).
+ * 2-hop agent resolution endpoint.
  *
- *   GET /api/v1/resolve?locator=<identifier>@<namespace>:<mode>
+ *   GET /api/v1/resolve?locator=<identifier>@<namespace>:global
  *
- * Dispatches to the correct resolution strategy based on the mode suffix,
- * fetches the AgentCard, and returns both the IndexRecord and AgentCard.
+ * Step 1: looks up the org in the NANDA Index DB → IndexRecord (with registry_url)
+ * Step 2: fetches the agent from the org's Registry Server → AgentRecord (with card_url)
  *
- * Error mapping:
- *   400  invalid / unparseable locator
- *   400  bad_request from NANDA Index
- *   404  not_found | no_srv_record
- *   429  rate_limited
- *   502  card_malformed | signature_invalid
- *   503  unreachable
+ * Returns both records. The caller uses agent_record.card_url to reach the A2A card.
  */
 export async function registerResolveRoute(fastify: FastifyInstance): Promise<void> {
-  fastify.get<{ Querystring: ResolveQuerystring }>(
-    '/api/v1/resolve',
-    {
-      schema: {
-        querystring: {
-          type: 'object',
-          required: ['locator'],
-          additionalProperties: false,
-          properties: {
-            locator: { type: 'string', minLength: 1 },
-          },
-        },
-        response: {
-          200: resolveResponseSchema,
-          400: apiErrorSchema,
-          404: apiErrorSchema,
-          429: apiErrorSchema,
-          502: apiErrorSchema,
-          503: apiErrorSchema,
+  fastify.get<{ Querystring: ResolveQuerystring }>('/api/v1/resolve', {
+    schema: {
+      tags: ['resolve'],
+      querystring: {
+        type: 'object',
+        required: ['locator'],
+        additionalProperties: false,
+        properties: {
+          locator: { type: 'string', minLength: 1 },
         },
       },
+      response: {
+        200: resolveResponseSchema,
+        400: apiErrorSchema,
+        404: apiErrorSchema,
+        502: apiErrorSchema,
+        503: apiErrorSchema,
+      },
     },
-    async (request, reply) => {
-      const { locator } = request.query;
+  }, async (request, reply) => {
+    const { locator } = request.query;
 
-      // Parse locator — §15 format: <identifier>@<namespace>:<mode>
-      let parsed;
-      try {
-        parsed = parseLocator(locator);
-      } catch (err) {
-        return reply.status(400).send({
-          error: 'invalid_locator',
-          detail: (err as Error).message,
-        });
-      }
+    let parsed;
+    try {
+      parsed = parseLocator(locator);
+    } catch (err) {
+      return reply.code(400).send({ error: 'invalid_locator', detail: (err as Error).message });
+    }
 
-      try {
-        const result = await resolveAgent(parsed);
-        return reply.status(200).send(result);
-      } catch (err) {
-        if (!(err instanceof ResolutionError)) throw err;
+    try {
+      const result = await resolveAgent(parsed);
+      return reply.code(200).send(result);
+    } catch (err) {
+      if (!(err instanceof ResolutionError)) throw err;
 
-        const statusMap: Record<ResolutionError['code'], number> = {
-          not_found:        404,
-          no_srv_record:    404,
-          bad_request:      400,
-          rate_limited:     429,
-          card_malformed:   502,
-          signature_invalid: 502,
-          unreachable:      503,
-        };
+      const statusMap: Record<ResolutionError['code'], number> = {
+        not_found:   404,
+        bad_request: 400,
+        bad_response: 502,
+        unreachable: 503,
+      };
 
-        return reply.status(statusMap[err.code]).send({
-          error: err.code,
-          detail: err.message,
-        });
-      }
-    },
-  );
+      return reply.code(statusMap[err.code]).send({ error: err.code, detail: err.message });
+    }
+  });
 }

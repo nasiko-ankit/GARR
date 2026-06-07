@@ -17,18 +17,20 @@ export async function registerSwagger(fastify: FastifyInstance): Promise<void> {
   await fastify.register(fastifySwagger, {
     openapi: {
       info: {
-        title: 'GARR — Global Agent Root Registry',
+        title: 'NANDA Index Server',
         description:
-          'DNS-inspired registry of registries for AI agents. ' +
-          'See GARR_Architecture_Spec_v1.1 for the authoritative design.',
-        version: '0.1.0',
+          'GARR v2 — NANDA Index Server. Stores IndexRecords pointing to Registry Servers. ' +
+          'Registry Servers store AgentRecords with card_url links to A2A cards.',
+        version: '2.0.0',
       },
-      servers: [{ url: 'http://localhost:3000', description: 'local dev' }],
+      servers: [{ url: 'http://localhost:3001', description: 'local dev' }],
       tags: [
-        { name: 'health', description: 'Liveness and readiness probes' },
-        { name: 'register', description: 'EntityOwner registration (write path)' },
-        { name: 'owners', description: 'EntityOwner read path' },
-        { name: 'manifest', description: 'Signed root manifest' },
+        { name: 'health',  description: 'Liveness and readiness probes' },
+        { name: 'auth',    description: 'OAuth login and email verification' },
+        { name: 'index',   description: 'Public index record lookup' },
+        { name: 'orgs',    description: 'Authenticated org management' },
+        { name: 'search',  description: 'Keyword search' },
+        { name: 'resolve', description: '2-hop agent resolution' },
       ],
     },
   });

@@ -15,37 +15,6 @@ describe('parseLocator', () => {
     });
   });
 
-  it('parses :dnssrv locator', () => {
-    const result = parseLocator('scheduler@nasiko.com:dnssrv');
-    expect(result).toEqual({
-      identifier: 'scheduler',
-      namespace:  'nasiko.com',
-      mode:       'dnssrv',
-      agentId:    'scheduler@nasiko.com',
-    });
-  });
-
-  it('parses :nandaindex.org locator', () => {
-    const result = parseLocator('agent123@xyz.com:nandaindex.org');
-    expect(result).toEqual({
-      identifier: 'agent123',
-      namespace:  'xyz.com',
-      mode:       'nandaindex.org',
-      agentId:    'agent123@xyz.com',
-    });
-  });
-
-  it('parses identifier containing a colon (§15.2 example)', () => {
-    // "complaints:starbucks@agentforce.com:dnssrv"
-    const result = parseLocator('complaints:starbucks@agentforce.com:dnssrv');
-    expect(result).toEqual({
-      identifier: 'complaints:starbucks',
-      namespace:  'agentforce.com',
-      mode:       'dnssrv',
-      agentId:    'complaints:starbucks@agentforce.com',
-    });
-  });
-
   it('trims surrounding whitespace', () => {
     const result = parseLocator('  agent123@xyz.com:global  ');
     expect(result.identifier).toBe('agent123');
@@ -58,6 +27,12 @@ describe('parseLocator', () => {
     expect(agentId).toBe('refunds@jetblue.com');
   });
 
+  it('handles subdomains in namespace', () => {
+    const result = parseLocator('myagent@agents.nasiko.com:global');
+    expect(result.identifier).toBe('myagent');
+    expect(result.namespace).toBe('agents.nasiko.com');
+  });
+
   // ── Error paths ─────────────────────────────────────────────────────────────
 
   it('throws on missing mode suffix (no colon)', () => {
@@ -66,6 +41,14 @@ describe('parseLocator', () => {
 
   it('throws on unknown mode', () => {
     expect(() => parseLocator('agent123@xyz.com:http')).toThrow('unknown mode');
+  });
+
+  it('throws on removed :dnssrv mode', () => {
+    expect(() => parseLocator('scheduler@nasiko.com:dnssrv')).toThrow('unknown mode');
+  });
+
+  it('throws on removed :nandaindex.org mode', () => {
+    expect(() => parseLocator('agent@xyz.com:nandaindex.org')).toThrow('unknown mode');
   });
 
   it('throws on missing @ separator', () => {

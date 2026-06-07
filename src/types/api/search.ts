@@ -1,14 +1,11 @@
-import type { EntityOwnerWire } from './owners.js';
-import { entityOwnerWireSchema } from './owners.js';
+import type { IndexRecord } from './index-record.js';
+import { INDEX_RECORD_SCHEMA } from './index-record.js';
 
-/**
- * GET /api/v1/search?q=keyword — response envelope.
- * Search is a live read against Postgres; not cached (§5.2 read path).
- */
+/** GET /api/v1/search?q=keyword — response envelope. */
 export interface SearchResponse {
   query: string;
   count: number;
-  results: EntityOwnerWire[];
+  results: IndexRecord[];
 }
 
 export const searchQuerySchema = {
@@ -25,11 +22,8 @@ export const searchResponseSchema = {
   required: ['query', 'count', 'results'],
   additionalProperties: false,
   properties: {
-    query: { type: 'string', minLength: 1, maxLength: 128 },
-    count: { type: 'integer', minimum: 0 },
-    results: {
-      type: 'array',
-      items: entityOwnerWireSchema,
-    },
+    query:   { type: 'string', minLength: 1, maxLength: 128 },
+    count:   { type: 'integer', minimum: 0 },
+    results: { type: 'array', items: INDEX_RECORD_SCHEMA },
   },
 } as const;

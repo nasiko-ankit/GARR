@@ -42,16 +42,37 @@ export interface DbConfig {
   readonly maxConnections: number;
 }
 
+export interface OAuthConfig {
+  readonly googleClientId: string;
+  readonly googleClientSecret: string;
+  readonly githubClientId: string;
+  readonly githubClientSecret: string;
+  readonly callbackBaseUrl: string;
+}
+
+export interface JwtConfig {
+  readonly secret: string;
+  readonly expiresIn: string;
+}
+
+export interface EmailConfig {
+  readonly smtpUrl: string;
+  readonly fromAddress: string;
+}
+
 export interface SigningConfig {
-  readonly privateKey: string;
+  readonly privateKey: string | undefined;
   readonly keyId: string;
 }
 
 export interface Config {
   readonly port: number;
   readonly nodeEnv: string;
-  readonly demoMode: boolean;
   readonly db: DbConfig;
+  readonly oauth: OAuthConfig;
+  readonly jwt: JwtConfig;
+  readonly email: EmailConfig;
+  readonly frontendUrl: string;
   readonly signing: SigningConfig;
 }
 
@@ -62,10 +83,11 @@ export interface Config {
  * with code 1 if any required variable is missing or invalid.
  */
 export function buildConfig(): Config {
+  const rawSigningKey = process.env['SIGNING_PRIVATE_KEY'];
+
   return {
-    port: parsePositiveInt('PORT', optionalEnv('PORT', '3000')),
+    port: parsePositiveInt('PORT', optionalEnv('PORT', '3001')),
     nodeEnv: optionalEnv('NODE_ENV', 'development'),
-    demoMode: optionalEnv('GARR_DEMO_MODE', 'false') === 'true',
     db: {
       url: requireEnv('DATABASE_URL'),
       maxConnections: parsePositiveInt(
@@ -73,9 +95,25 @@ export function buildConfig(): Config {
         optionalEnv('DB_MAX_CONNECTIONS', '10'),
       ),
     },
+    oauth: {
+      googleClientId:     optionalEnv('GOOGLE_CLIENT_ID', ''),
+      googleClientSecret: optionalEnv('GOOGLE_CLIENT_SECRET', ''),
+      githubClientId:     optionalEnv('GITHUB_CLIENT_ID', ''),
+      githubClientSecret: optionalEnv('GITHUB_CLIENT_SECRET', ''),
+      callbackBaseUrl:    optionalEnv('OAUTH_CALLBACK_BASE_URL', 'http://localhost:3001'),
+    },
+    jwt: {
+      secret:    optionalEnv('JWT_SECRET', 'dev-secret-change-in-production'),
+      expiresIn: optionalEnv('JWT_EXPIRES_IN', '7d'),
+    },
+    email: {
+      smtpUrl:     optionalEnv('SMTP_URL', 'log'),
+      fromAddress: optionalEnv('EMAIL_FROM', 'noreply@nanda.local'),
+    },
+    frontendUrl: optionalEnv('FRONTEND_URL', 'http://localhost:3000'),
     signing: {
-      privateKey: requireEnv('SIGNING_PRIVATE_KEY').replace(/\\n/g, '\n'),
-      keyId: optionalEnv('SIGNING_KEY_ID', 'garr-dev-unspecified'),
+      privateKey: rawSigningKey ? rawSigningKey.replace(/\\n/g, '\n') : undefined,
+      keyId:      optionalEnv('SIGNING_KEY_ID', 'garr-dev-unspecified'),
     },
   };
 }

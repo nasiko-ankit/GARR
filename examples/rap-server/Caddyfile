@@ -1,4 +1,0 @@
-# Port 80 — RAP server (agents.json catalog)
-:80 {
-	reverse_proxy rap-server:3001
-}

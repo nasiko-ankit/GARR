@@ -5,7 +5,8 @@ import {
   sign as cryptoSign,
   verify as cryptoVerify,
 } from 'node:crypto';
-import type { SigningAlgorithm } from '../types/entityOwner.js';
+
+export type SigningAlgorithm = 'ed25519' | 'rsa-sha256';
 
 /**
  * Serializes `value` to canonical JSON per CLAUDE.md §4.5:

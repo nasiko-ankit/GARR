@@ -1,4 +1,0 @@
-*.pem
-.env
-dist/
-node_modules/

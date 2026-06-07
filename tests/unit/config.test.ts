@@ -76,26 +76,25 @@ describe('parsePositiveInt', () => {
 });
 
 describe('buildConfig', () => {
-  it('applies defaults when only required vars are set', () => {
+  it('applies defaults when only DATABASE_URL is set', () => {
     process.env.DATABASE_URL = 'postgresql://u:p@localhost/db';
-    process.env.SIGNING_PRIVATE_KEY = 'signing-key';
+    delete process.env.SIGNING_PRIVATE_KEY;
     delete process.env.PORT;
     delete process.env.NODE_ENV;
     delete process.env.SIGNING_KEY_ID;
     delete process.env.DB_MAX_CONNECTIONS;
 
     const cfg = buildConfig();
-    expect(cfg.port).toBe(3000);
+    expect(cfg.port).toBe(3001);  // default changed from 3000 in v2
     expect(cfg.nodeEnv).toBe('development');
     expect(cfg.db.url).toBe('postgresql://u:p@localhost/db');
     expect(cfg.db.maxConnections).toBe(10);
-    expect(cfg.signing.privateKey).toBe('signing-key');
+    expect(cfg.signing.privateKey).toBeUndefined();  // optional in v2
     expect(cfg.signing.keyId).toBe('garr-dev-unspecified');
   });
 
   it('applies overrides from env', () => {
     process.env.DATABASE_URL = 'x';
-    process.env.SIGNING_PRIVATE_KEY = 'y';
     process.env.PORT = '4000';
     process.env.NODE_ENV = 'production';
     process.env.SIGNING_KEY_ID = 'custom';
@@ -110,17 +109,28 @@ describe('buildConfig', () => {
 
   it('exits when DATABASE_URL is missing', () => {
     delete process.env.DATABASE_URL;
-    process.env.SIGNING_PRIVATE_KEY = 'y';
     const exitSpy = mockExit();
     expect(() => buildConfig()).toThrow('__mock_exit__');
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
-  it('exits when SIGNING_PRIVATE_KEY is missing', () => {
+  it('reads OAuth config from env', () => {
     process.env.DATABASE_URL = 'x';
-    delete process.env.SIGNING_PRIVATE_KEY;
-    const exitSpy = mockExit();
-    expect(() => buildConfig()).toThrow('__mock_exit__');
-    expect(exitSpy).toHaveBeenCalledWith(1);
+    process.env.GOOGLE_CLIENT_ID = 'gid';
+    process.env.GOOGLE_CLIENT_SECRET = 'gsecret';
+    process.env.JWT_SECRET = 'mysecret';
+
+    const cfg = buildConfig();
+    expect(cfg.oauth.googleClientId).toBe('gid');
+    expect(cfg.oauth.googleClientSecret).toBe('gsecret');
+    expect(cfg.jwt.secret).toBe('mysecret');
+  });
+
+  it('defaults SMTP_URL to "log"', () => {
+    process.env.DATABASE_URL = 'x';
+    delete process.env.SMTP_URL;
+
+    const cfg = buildConfig();
+    expect(cfg.email.smtpUrl).toBe('log');
   });
 });

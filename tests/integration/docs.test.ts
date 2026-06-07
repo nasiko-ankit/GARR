@@ -15,19 +15,20 @@ describe('GET /docs/json — OpenAPI spec', () => {
     await fastify.close();
   });
 
-  it('serves a valid OpenAPI 3 document covering every registered route', async () => {
+  it('serves a valid OpenAPI 3 document with NANDA Index routes', async () => {
     const res = await fastify.inject({ method: 'GET', url: '/docs/json' });
     expect(res.statusCode).toBe(200);
 
     const spec = res.json() as { openapi: string; info: { title: string }; paths: Record<string, unknown> };
     expect(spec.openapi).toMatch(/^3\./);
-    expect(spec.info.title).toContain('GARR');
+    expect(spec.info.title).toBe('NANDA Index Server');
 
-    // Every endpoint stamped out in Step 9 must appear in the doc.
+    // Core v2 endpoints must be present
     expect(spec.paths['/health']).toBeDefined();
-    expect(spec.paths['/api/v1/register']).toBeDefined();
-    expect(spec.paths['/api/v1/register/{owner_id}/verify']).toBeDefined();
-    expect(spec.paths['/api/v1/owners/{owner_id}']).toBeDefined();
-    expect(spec.paths['/global_agent_root.json']).toBeDefined();
+    expect(spec.paths['/api/v1/index']).toBeDefined();
+    expect(spec.paths['/api/v1/index/{org_id}']).toBeDefined();
+    expect(spec.paths['/api/v1/orgs']).toBeDefined();
+    expect(spec.paths['/api/v1/resolve']).toBeDefined();
+    expect(spec.paths['/api/v1/search']).toBeDefined();
   });
 });
