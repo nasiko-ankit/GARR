@@ -26,15 +26,21 @@ export async function insertMembership(
   return rows[0]!;
 }
 
+export interface MembershipWithOrg extends OrgMembership {
+  displayName: string;
+  status: 'pending' | 'active' | 'suspended';
+  emailVerified: boolean;
+}
+
 /**
- * Returns all memberships for a user with org details joined.
+ * Returns all memberships for a user with key org fields joined.
  */
 export async function findMembershipsByUserId(
   userId: string,
-): Promise<Array<OrgMembership & { displayName: string }>> {
+): Promise<MembershipWithOrg[]> {
   const sql = getSql();
-  return sql<Array<OrgMembership & { displayName: string }>>`
-    SELECT m.*, o.display_name
+  return sql<MembershipWithOrg[]>`
+    SELECT m.*, o.display_name, o.status, o.email_verified
     FROM org_memberships m
     JOIN organizations o ON o.org_id = m.org_id
     WHERE m.user_id = ${userId}

@@ -5,7 +5,9 @@ import fastifySwagger from '@fastify/swagger';
 import fastifySwaggerUi from '@fastify/swagger-ui';
 import { getConfig } from './config.js';
 import { closeSql } from './db.js';
+import { registerJwtPlugin } from './plugins/jwt.js';
 import { registerHealthRoute } from './routes/health.js';
+import { registerAuthRoutes } from './routes/auth.js';
 import { registerAgentRoutes } from './routes/agents.js';
 
 export interface BuildServerOptions {
@@ -22,7 +24,11 @@ export async function buildServer(options: BuildServerOptions = {}) {
         : { level: config.nodeEnv === 'production' ? 'info' : 'debug' },
   });
 
-  await fastify.register(cors, { origin: true });
+  await fastify.register(cors, {
+    origin: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  });
 
   fastify.setErrorHandler((error: { statusCode?: number; message?: string }, _request, reply) => {
     fastify.log.error(error);
@@ -42,6 +48,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
       servers: [{ url: 'http://localhost:3002', description: 'local dev' }],
       tags: [
         { name: 'health', description: 'Liveness probe' },
+        { name: 'auth',   description: 'Sign up / sign in' },
         { name: 'agents', description: 'Agent record CRUD' },
       ],
     },
@@ -52,7 +59,10 @@ export async function buildServer(options: BuildServerOptions = {}) {
     uiConfig: { deepLinking: true },
   });
 
+  await registerJwtPlugin(fastify);
+
   await registerHealthRoute(fastify);
+  await registerAuthRoutes(fastify);
   await registerAgentRoutes(fastify);
 
   return { fastify, config };

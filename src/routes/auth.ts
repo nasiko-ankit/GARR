@@ -48,10 +48,36 @@ interface GitHubEmail {
 export async function registerAuthRoutes(fastify: FastifyInstance): Promise<void> {
   const config = buildConfig();
 
+  // GET /auth/providers — tells the frontend which OAuth providers are active.
+  // Frontend uses this to show/hide Google and GitHub buttons.
+  fastify.get('/auth/providers', {
+    schema: {
+      tags: ['auth'],
+      summary: 'List configured OAuth providers',
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            google: { type: 'boolean' },
+            github: { type: 'boolean' },
+          },
+        },
+      },
+    },
+  }, async (_request, reply) => {
+    return reply.send({
+      google: !!(config.oauth.googleClientId && config.oauth.googleClientSecret),
+      github: !!(config.oauth.githubClientId && config.oauth.githubClientSecret),
+    });
+  });
+
   // Google OAuth callback
   fastify.get('/auth/google/callback', async (request, reply) => {
+    if (!fastify.oauth2Google) {
+      return reply.redirect(`${config.frontendUrl}/login?error=oauth_not_configured`);
+    }
     try {
-      const tokenData = await fastify.oauth2Google!.getAccessTokenFromAuthorizationCodeFlow(request);
+      const tokenData = await fastify.oauth2Google.getAccessTokenFromAuthorizationCodeFlow(request);
       const accessToken = tokenData.token.access_token as string;
 
       const profileResp = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
@@ -169,8 +195,11 @@ export async function registerAuthRoutes(fastify: FastifyInstance): Promise<void
 
   // GitHub OAuth callback
   fastify.get('/auth/github/callback', async (request, reply) => {
+    if (!fastify.oauth2Github) {
+      return reply.redirect(`${config.frontendUrl}/login?error=oauth_not_configured`);
+    }
     try {
-      const tokenData = await fastify.oauth2Github!.getAccessTokenFromAuthorizationCodeFlow(request);
+      const tokenData = await fastify.oauth2Github.getAccessTokenFromAuthorizationCodeFlow(request);
       const accessToken = tokenData.token.access_token as string;
 
       const profileResp = await fetch('https://api.github.com/user', {

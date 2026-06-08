@@ -19,41 +19,45 @@ const GITHUB_CONFIGURATION = {
 
 /**
  * Registers @fastify/oauth2 for Google and GitHub.
- * Plugin names follow the `oauth2X` convention required by @fastify/oauth2
- * FastifyInstance augmentation (`oauth2${UpperCaseCharacters}${string}`).
+ * Each provider is only registered when both client ID and secret are set —
+ * this allows local dev without OAuth credentials (email/password still works).
  *
- * Decorators added: fastify.oauth2Google, fastify.oauth2Github
+ * Decorators added (when configured): fastify.oauth2Google, fastify.oauth2Github
  * Start paths: /auth/google, /auth/github
  * Callbacks: /auth/google/callback, /auth/github/callback
  */
 export async function registerOAuthPlugin(fastify: FastifyInstance): Promise<void> {
   const config = buildConfig();
 
-  await fastify.register(oauth2, {
-    name: 'oauth2Google',
-    credentials: {
-      client: {
-        id:     config.oauth.googleClientId,
-        secret: config.oauth.googleClientSecret,
+  if (config.oauth.googleClientId && config.oauth.googleClientSecret) {
+    await fastify.register(oauth2, {
+      name: 'oauth2Google',
+      credentials: {
+        client: {
+          id:     config.oauth.googleClientId,
+          secret: config.oauth.googleClientSecret,
+        },
+        auth: GOOGLE_CONFIGURATION,
       },
-      auth: GOOGLE_CONFIGURATION,
-    },
-    scope: ['profile', 'email'],
-    startRedirectPath: '/auth/google',
-    callbackUri: `${config.oauth.callbackBaseUrl}/auth/google/callback`,
-  });
+      scope: ['profile', 'email'],
+      startRedirectPath: '/auth/google',
+      callbackUri: `${config.oauth.callbackBaseUrl}/auth/google/callback`,
+    });
+  }
 
-  await fastify.register(oauth2, {
-    name: 'oauth2Github',
-    credentials: {
-      client: {
-        id:     config.oauth.githubClientId,
-        secret: config.oauth.githubClientSecret,
+  if (config.oauth.githubClientId && config.oauth.githubClientSecret) {
+    await fastify.register(oauth2, {
+      name: 'oauth2Github',
+      credentials: {
+        client: {
+          id:     config.oauth.githubClientId,
+          secret: config.oauth.githubClientSecret,
+        },
+        auth: GITHUB_CONFIGURATION,
       },
-      auth: GITHUB_CONFIGURATION,
-    },
-    scope: ['user:email'],
-    startRedirectPath: '/auth/github',
-    callbackUri: `${config.oauth.callbackBaseUrl}/auth/github/callback`,
-  });
+      scope: ['user:email'],
+      startRedirectPath: '/auth/github',
+      callbackUri: `${config.oauth.callbackBaseUrl}/auth/github/callback`,
+    });
+  }
 }
