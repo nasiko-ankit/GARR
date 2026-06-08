@@ -9,14 +9,13 @@ interface ResolveQuerystring {
 }
 
 /**
- * 2-hop agent resolution endpoint.
+ * Agent locator resolution endpoint.
  *
  *   GET /api/v1/resolve?locator=<identifier>@<namespace>:global
  *
- * Step 1: looks up the org in the NANDA Index DB → IndexRecord (with registry_url)
- * Step 2: fetches the agent from the org's Registry Server → AgentRecord (with card_url)
- *
- * Returns both records. The caller uses agent_record.card_url to reach the A2A card.
+ * Looks up the org in the NANDA Index DB → returns IndexRecord (with registry_url)
+ * plus the parsed identifier. The caller then fetches the AgentRecord directly:
+ *   GET <index_record.registry_url>/agents/<identifier>
  */
 export async function registerResolveRoute(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Querystring: ResolveQuerystring }>('/api/v1/resolve', {
@@ -34,8 +33,6 @@ export async function registerResolveRoute(fastify: FastifyInstance): Promise<vo
         200: resolveResponseSchema,
         400: apiErrorSchema,
         404: apiErrorSchema,
-        502: apiErrorSchema,
-        503: apiErrorSchema,
       },
     },
   }, async (request, reply) => {
@@ -57,8 +54,6 @@ export async function registerResolveRoute(fastify: FastifyInstance): Promise<vo
       const statusMap: Record<ResolutionError['code'], number> = {
         not_found:   404,
         bad_request: 400,
-        bad_response: 502,
-        unreachable: 503,
       };
 
       return reply.code(statusMap[err.code]).send({ error: err.code, detail: err.message });

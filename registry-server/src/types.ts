@@ -1,10 +1,12 @@
-/** Domain type — camelCase (postgres.camel maps snake_case columns). */
+/** DB row — camelCase via postgres.camel. */
 export interface AgentRow {
   id: string;
   agentId: string;
   displayName: string;
   description: string | null;
-  cardUrl: string;
+  url: string;
+  mediaType: string;
+  version: string | null;
   tags: string[];
   ttlSeconds: number;
   status: 'active' | 'inactive';
@@ -12,46 +14,69 @@ export interface AgentRow {
   updatedAt: Date;
 }
 
-/** Wire shape returned by the Registry Server API. */
-export interface AgentRecord {
-  agent_id: string;
-  display_name: string;
-  description: string | null;
-  card_url: string;
-  tags: string[];
-  ttl_seconds: number;
-  status: 'active' | 'inactive';
-  created_at: string;
-  updated_at: string;
+/**
+ * AI Catalog CatalogEntry (application/ai-catalog+json §3.2).
+ * Required: identifier, displayName, mediaType, url.
+ * NANDA-specific fields (ttl_seconds, status) are placed in metadata.
+ */
+export interface CatalogEntry {
+  identifier: string;
+  displayName: string;
+  mediaType: string;
+  url: string;
+  description?: string | null;
+  tags?: string[];
+  version?: string | null;
+  updatedAt?: string;
+  metadata?: Record<string, unknown>;
 }
 
-export function toAgentRecord(row: AgentRow): AgentRecord {
+/** AI Catalog top-level document (application/ai-catalog+json §3.1). */
+export interface CatalogDocument {
+  specVersion: string;
+  entries: CatalogEntry[];
+}
+
+/** Convert a DB row to a spec-compliant CatalogEntry. */
+export function toCatalogEntry(row: AgentRow): CatalogEntry {
   return {
-    agent_id:     row.agentId,
-    display_name: row.displayName,
-    description:  row.description,
-    card_url:     row.cardUrl,
-    tags:         row.tags,
-    ttl_seconds:  row.ttlSeconds,
-    status:       row.status,
-    created_at:   row.createdAt.toISOString(),
-    updated_at:   row.updatedAt.toISOString(),
+    identifier:  row.agentId,
+    displayName: row.displayName,
+    mediaType:   row.mediaType,
+    url:         row.url,
+    description: row.description,
+    tags:        row.tags,
+    version:     row.version,
+    updatedAt:   row.updatedAt.toISOString(),
+    metadata: {
+      ttl_seconds: row.ttlSeconds,
+      status:      row.status,
+    },
   };
 }
 
-export const AGENT_RECORD_SCHEMA = {
+export const CATALOG_ENTRY_SCHEMA = {
   type: 'object',
-  required: ['agent_id', 'display_name', 'card_url', 'tags', 'ttl_seconds', 'status', 'created_at', 'updated_at'],
+  required: ['identifier', 'displayName', 'mediaType', 'url'],
   properties: {
-    agent_id:     { type: 'string' },
-    display_name: { type: 'string' },
-    description:  { type: ['string', 'null'] },
-    card_url:     { type: 'string' },
-    tags:         { type: 'array', items: { type: 'string' } },
-    ttl_seconds:  { type: 'number' },
-    status:       { type: 'string', enum: ['active', 'inactive'] },
-    created_at:   { type: 'string' },
-    updated_at:   { type: 'string' },
+    identifier:  { type: 'string' },
+    displayName: { type: 'string' },
+    mediaType:   { type: 'string' },
+    url:         { type: 'string' },
+    description: { type: ['string', 'null'] },
+    tags:        { type: 'array', items: { type: 'string' } },
+    version:     { type: ['string', 'null'] },
+    updatedAt:   { type: 'string' },
+    metadata:    { type: 'object', additionalProperties: true },
+  },
+} as const;
+
+export const CATALOG_DOCUMENT_SCHEMA = {
+  type: 'object',
+  required: ['specVersion', 'entries'],
+  properties: {
+    specVersion: { type: 'string' },
+    entries:     { type: 'array', items: CATALOG_ENTRY_SCHEMA },
   },
 } as const;
 

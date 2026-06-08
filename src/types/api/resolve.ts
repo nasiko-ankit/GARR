@@ -1,43 +1,37 @@
 import type { IndexRecord } from './index-record.js';
-import type { AgentRecord } from './agent-record.js';
 import { INDEX_RECORD_SCHEMA } from './index-record.js';
-import { AGENT_RECORD_SCHEMA } from './agent-record.js';
-
-/** The only supported resolution mode (§15.3 — v2 supports :global only). */
-export type ResolutionMode = 'global';
-
-export const RESOLUTION_MODES: ResolutionMode[] = ['global'];
 
 /**
- * The three components of an Agent Locator after parsing (§15.1).
- * Raw form: `<identifier>@<namespace>:<mode>`
+ * Components of a parsed URN agent locator.
+ * Format: urn:<nid>:<domain>:<identifier>
+ * Example: urn:ai:nasiko.com:ankit
  */
 export interface ParsedLocator {
-  readonly identifier: string;
-  readonly namespace: string;
-  readonly mode: ResolutionMode;
-  readonly agentId: string;
+  readonly urn: string;        // full URN, e.g. "urn:ai:nasiko.com:ankit"
+  readonly nid: string;        // namespace identifier, e.g. "ai"
+  readonly domain: string;     // org domain component, e.g. "nasiko.com"
+  readonly identifier: string; // local agent id, e.g. "ankit"
 }
 
 /**
  * Successful response from GET /api/v1/resolve.
- * Returns the IndexRecord (from NANDA Index) and the AgentRecord (from Registry Server).
- * The caller uses agent_record.card_url to fetch the A2A card and communicate.
+ * Returns the IndexRecord from the NANDA Index plus the parsed identifier.
+ * The caller fetches the AgentRecord directly: GET <index_record.registry_url>/agents/<identifier>
  */
 export interface ResolveResponse {
   readonly locator: string;
+  readonly identifier: string;
   readonly index_record: IndexRecord;
-  readonly agent_record: AgentRecord;
 }
 
-export { IndexRecord, AgentRecord };
+export { IndexRecord };
 
 export const resolveResponseSchema = {
   type: 'object',
-  required: ['locator', 'index_record', 'agent_record'],
+  required: ['locator', 'identifier', 'index_record'],
   properties: {
-    locator:      { type: 'string', minLength: 1 },
+    locator: { type: 'string', minLength: 1 },
+    identifier: { type: 'string', minLength: 1 },
     index_record: INDEX_RECORD_SCHEMA,
-    agent_record: AGENT_RECORD_SCHEMA,
   },
 } as const;

@@ -6,8 +6,9 @@ export interface User {
   email: string;
   displayName: string | null;
   avatarUrl: string | null;
-  provider: 'google' | 'github';
+  provider: 'google' | 'github' | 'email';
   providerId: string;
+  passwordHash: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -64,6 +65,37 @@ export async function upsertUser(params: UpsertUserParams): Promise<User> {
         display_name = EXCLUDED.display_name,
         avatar_url   = EXCLUDED.avatar_url,
         updated_at   = NOW()
+    RETURNING *
+  `;
+  return rows[0]!;
+}
+
+/**
+ * Finds a user by email address (used for password login).
+ * Returns null if not found.
+ */
+export async function findUserByEmail(email: string): Promise<User | null> {
+  const sql = getSql();
+  const rows = await sql<User[]>`
+    SELECT * FROM users WHERE email = ${email} LIMIT 1
+  `;
+  return rows[0] ?? null;
+}
+
+/**
+ * Creates a new email/password user.
+ * Uses provider='email', provider_id=email so the existing unique constraint holds.
+ * Throws on duplicate email.
+ */
+export async function createUserWithPassword(
+  email: string,
+  passwordHash: string,
+  displayName: string | null,
+): Promise<User> {
+  const sql = getSql();
+  const rows = await sql<User[]>`
+    INSERT INTO users (email, display_name, provider, provider_id, password_hash)
+    VALUES (${email}, ${displayName}, 'email', ${email}, ${passwordHash})
     RETURNING *
   `;
   return rows[0]!;

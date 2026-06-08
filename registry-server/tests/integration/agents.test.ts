@@ -26,45 +26,60 @@ describe('Agent CRUD routes', () => {
     await sql`DELETE FROM agents WHERE agent_id LIKE 'test-%'`;
   });
 
-  // ── GET /agents ──────────────────────────────────────────────────────────────
+  // ── GET /agents ───────────────────────────────────────────────────────────────
 
-  it('GET /agents returns 200 with empty array when no agents', async () => {
+  it('GET /agents returns 200 with catalog document shape', async () => {
     const res = await fastify.inject({ method: 'GET', url: '/agents' });
     expect(res.statusCode).toBe(200);
-    expect(Array.isArray(res.json())).toBe(true);
+    const body = res.json();
+    expect(body).toHaveProperty('specVersion', '1.0');
+    expect(Array.isArray(body.entries)).toBe(true);
   });
 
-  // ── POST /agents ─────────────────────────────────────────────────────────────
+  // ── /.well-known/ai-catalog.json ──────────────────────────────────────────────
+
+  it('GET /.well-known/ai-catalog.json returns catalog document', async () => {
+    const res = await fastify.inject({ method: 'GET', url: '/.well-known/ai-catalog.json' });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('application/ai-catalog+json');
+    const body = res.json();
+    expect(body).toHaveProperty('specVersion', '1.0');
+    expect(Array.isArray(body.entries)).toBe(true);
+  });
+
+  // ── POST /agents ──────────────────────────────────────────────────────────────
 
   it('POST /agents returns 401 without token', async () => {
     const res = await fastify.inject({
       method: 'POST', url: '/agents',
-      payload: { agent_id: 'test-anon', display_name: 'Anon', card_url: 'https://example.com/card' },
+      payload: { agent_id: 'test-anon', display_name: 'Anon', url: 'https://example.com/card' },
     });
     expect(res.statusCode).toBe(401);
   });
 
-  it('POST /agents creates an agent and returns 201', async () => {
+  it('POST /agents creates an agent and returns 201 with CatalogEntry', async () => {
     const res = await fastify.inject({
       method: 'POST', url: '/agents',
       headers: AUTH,
       payload: {
         agent_id: 'test-create',
         display_name: 'Test Agent',
-        card_url: 'https://example.com/a2a.json',
+        url: 'https://example.com/a2a.json',
         tags: ['search'],
       },
     });
     expect(res.statusCode).toBe(201);
     const body = res.json();
-    expect(body.agent_id).toBe('test-create');
-    expect(body.card_url).toBe('https://example.com/a2a.json');
+    expect(body.identifier).toBe('test-create');
+    expect(body.displayName).toBe('Test Agent');
+    expect(body.url).toBe('https://example.com/a2a.json');
     expect(body.tags).toEqual(['search']);
-    expect(body.status).toBe('active');
+    expect(body.mediaType).toBeDefined();
+    expect(body.metadata?.status).toBe('active');
   });
 
   it('POST /agents returns 409 on duplicate agent_id', async () => {
-    const payload = { agent_id: 'test-dup', display_name: 'Dup', card_url: 'https://example.com/c' };
+    const payload = { agent_id: 'test-dup', display_name: 'Dup', url: 'https://example.com/c' };
     await fastify.inject({ method: 'POST', url: '/agents', headers: AUTH, payload });
     const res = await fastify.inject({ method: 'POST', url: '/agents', headers: AUTH, payload });
     expect(res.statusCode).toBe(409);
@@ -74,22 +89,25 @@ describe('Agent CRUD routes', () => {
     const res = await fastify.inject({
       method: 'POST', url: '/agents',
       headers: AUTH,
-      payload: { agent_id: 'Test-UPPER', display_name: 'Bad', card_url: 'https://example.com/c' },
+      payload: { agent_id: 'Test-UPPER', display_name: 'Bad', url: 'https://example.com/c' },
     });
     expect(res.statusCode).toBe(400);
   });
 
-  // ── GET /agents/:agent_id ─────────────────────────────────────────────────
+  // ── GET /agents/:agent_id ─────────────────────────────────────────────────────
 
-  it('GET /agents/:agent_id returns the agent', async () => {
+  it('GET /agents/:agent_id returns CatalogEntry', async () => {
     await fastify.inject({
       method: 'POST', url: '/agents', headers: AUTH,
-      payload: { agent_id: 'test-get', display_name: 'Get Me', card_url: 'https://example.com/get' },
+      payload: { agent_id: 'test-get', display_name: 'Get Me', url: 'https://example.com/get' },
     });
 
     const res = await fastify.inject({ method: 'GET', url: '/agents/test-get' });
     expect(res.statusCode).toBe(200);
-    expect(res.json().agent_id).toBe('test-get');
+    const body = res.json();
+    expect(body.identifier).toBe('test-get');
+    expect(body.displayName).toBe('Get Me');
+    expect(body.url).toBe('https://example.com/get');
   });
 
   it('GET /agents/:agent_id returns 404 for missing agent', async () => {
@@ -97,21 +115,21 @@ describe('Agent CRUD routes', () => {
     expect(res.statusCode).toBe(404);
   });
 
-  // ── PUT /agents/:agent_id ─────────────────────────────────────────────────
+  // ── PUT /agents/:agent_id ─────────────────────────────────────────────────────
 
   it('PUT /agents/:agent_id updates fields', async () => {
     await fastify.inject({
       method: 'POST', url: '/agents', headers: AUTH,
-      payload: { agent_id: 'test-update', display_name: 'Old Name', card_url: 'https://example.com/old' },
+      payload: { agent_id: 'test-update', display_name: 'Old Name', url: 'https://example.com/old' },
     });
 
     const res = await fastify.inject({
       method: 'PUT', url: '/agents/test-update', headers: AUTH,
-      payload: { display_name: 'New Name', card_url: 'https://example.com/new' },
+      payload: { display_name: 'New Name', url: 'https://example.com/new' },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json().display_name).toBe('New Name');
-    expect(res.json().card_url).toBe('https://example.com/new');
+    expect(res.json().displayName).toBe('New Name');
+    expect(res.json().url).toBe('https://example.com/new');
   });
 
   it('PUT /agents/:agent_id returns 401 without token', async () => {
@@ -122,12 +140,12 @@ describe('Agent CRUD routes', () => {
     expect(res.statusCode).toBe(401);
   });
 
-  // ── DELETE /agents/:agent_id ──────────────────────────────────────────────
+  // ── DELETE /agents/:agent_id ──────────────────────────────────────────────────
 
   it('DELETE /agents/:agent_id removes the agent', async () => {
     await fastify.inject({
       method: 'POST', url: '/agents', headers: AUTH,
-      payload: { agent_id: 'test-del', display_name: 'Del Me', card_url: 'https://example.com/del' },
+      payload: { agent_id: 'test-del', display_name: 'Del Me', url: 'https://example.com/del' },
     });
 
     const del = await fastify.inject({ method: 'DELETE', url: '/agents/test-del', headers: AUTH });

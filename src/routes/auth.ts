@@ -1,6 +1,18 @@
 import type { FastifyInstance } from 'fastify';
-import { upsertUser } from '../db/queries/users.js';
+import bcrypt from 'bcryptjs';
+import { upsertUser, findUserByEmail, createUserWithPassword } from '../db/queries/users.js';
 import { buildConfig } from '../config/index.js';
+import { apiErrorSchema } from '../types/api/common.js';
+
+const BCRYPT_ROUNDS = 10;
+
+const jwtResponseSchema = {
+  type: 'object',
+  required: ['token'],
+  properties: {
+    token: { type: 'string' },
+  },
+} as const;
 
 interface GoogleUserInfo {
   id: string;
@@ -69,6 +81,91 @@ export async function registerAuthRoutes(fastify: FastifyInstance): Promise<void
       return reply.redirect(`${config.frontendUrl}/login?error=oauth_failed`);
     }
   });
+
+  // Email/password registration
+  fastify.post<{ Body: { email: string; password: string; display_name?: string } }>(
+    '/auth/register',
+    {
+      schema: {
+        tags: ['auth'],
+        body: {
+          type: 'object',
+          required: ['email', 'password'],
+          additionalProperties: false,
+          properties: {
+            email:        { type: 'string', format: 'email', maxLength: 255 },
+            password:     { type: 'string', minLength: 8, maxLength: 128 },
+            display_name: { type: 'string', maxLength: 255 },
+          },
+        },
+        response: {
+          201: jwtResponseSchema,
+          409: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { email, password, display_name } = request.body;
+
+      const existing = await findUserByEmail(email);
+      if (existing) {
+        return reply.code(409).send({ error: 'CONFLICT', detail: 'email already registered' });
+      }
+
+      const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+      const user = await createUserWithPassword(email, passwordHash, display_name ?? null);
+
+      const token = await reply.jwtSign(
+        { userId: user.id, email: user.email, displayName: user.displayName },
+        { expiresIn: config.jwt.expiresIn },
+      );
+
+      return reply.code(201).send({ token });
+    },
+  );
+
+  // Email/password login
+  fastify.post<{ Body: { email: string; password: string } }>(
+    '/auth/login',
+    {
+      schema: {
+        tags: ['auth'],
+        body: {
+          type: 'object',
+          required: ['email', 'password'],
+          additionalProperties: false,
+          properties: {
+            email:    { type: 'string', format: 'email', maxLength: 255 },
+            password: { type: 'string', minLength: 1, maxLength: 128 },
+          },
+        },
+        response: {
+          200: jwtResponseSchema,
+          401: apiErrorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { email, password } = request.body;
+
+      const user = await findUserByEmail(email);
+      if (!user || !user.passwordHash) {
+        return reply.code(401).send({ error: 'UNAUTHORIZED', detail: 'invalid email or password' });
+      }
+
+      const valid = await bcrypt.compare(password, user.passwordHash);
+      if (!valid) {
+        return reply.code(401).send({ error: 'UNAUTHORIZED', detail: 'invalid email or password' });
+      }
+
+      const token = await reply.jwtSign(
+        { userId: user.id, email: user.email, displayName: user.displayName },
+        { expiresIn: config.jwt.expiresIn },
+      );
+
+      return reply.code(200).send({ token });
+    },
+  );
 
   // GitHub OAuth callback
   fastify.get('/auth/github/callback', async (request, reply) => {

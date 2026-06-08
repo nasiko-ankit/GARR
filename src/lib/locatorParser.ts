@@ -1,58 +1,85 @@
-import { RESOLUTION_MODES } from '../types/api/resolve.js';
-import type { ParsedLocator, ResolutionMode } from '../types/api/resolve.js';
+import type { ParsedLocator } from '../types/api/resolve.js';
 
 /**
- * Parses an Agent Locator string into its three components (§15.1).
+ * NID validation: 1–31 chars, letters/digits/hyphens, not starting with hyphen.
+ * The reserved value "urn" itself is disallowed as an NID.
+ */
+const NID_RE = /^[a-z0-9][a-z0-9-]{0,30}$/i;
+
+/**
+ * URN agent locator into its components.
  *
- * Format: `<identifier>@<namespace>:<mode>`
- *   - mode       = everything after the last `:`
- *   - namespace  = everything between the last `@` and the last `:`
- *   - identifier = everything before the last `@`
+ * Format: urn:<nid>:<domain>:<identifier>
+ * Example: urn:ai:nasiko.com:ankit
  *
- * Only `:global` mode is supported in v2. The mode suffix is a binding
- * instruction — never inferred (§15.3).
+ * The NID (e.g. "ai") is schema-agnostic — the caller selects the NID when
+ * registering agents; this parser accepts any RFC 8141-valid NID so the URN
+ * schema can evolve without a parser change.
  *
- * @param raw - the raw locator string, e.g. "ankit@nasiko.com:global"
- * @returns ParsedLocator with identifier, namespace, mode, and agentId
+ * @param raw - the raw URN string
+ * @returns ParsedLocator with urn, nid, domain, and identifier
  * @throws Error with a descriptive message on any malformed input
  */
 export function parseLocator(raw: string): ParsedLocator {
   const trimmed = raw.trim();
 
-  const lastColon = trimmed.lastIndexOf(':');
-  if (lastColon === -1) {
+  if (!trimmed.toLowerCase().startsWith('urn:')) {
     throw new Error(
-      `invalid locator "${trimmed}": missing mode suffix (expected :global)`,
+      `invalid locator "${trimmed}": must start with "urn:" (RFC 8141)`,
     );
   }
 
-  const modeRaw = trimmed.slice(lastColon + 1);
-  const identityPart = trimmed.slice(0, lastColon);
-
-  if (!RESOLUTION_MODES.includes(modeRaw as ResolutionMode)) {
+  // After "urn:", split into NID and NSS on the first colon
+  const rest = trimmed.slice(4); // drop "urn:"
+  const nidEnd = rest.indexOf(':');
+  if (nidEnd === -1) {
     throw new Error(
-      `invalid locator "${trimmed}": unknown mode ":${modeRaw}" — must be :global`,
-    );
-  }
-  const mode = modeRaw as ResolutionMode;
-
-  const atIdx = identityPart.lastIndexOf('@');
-  if (atIdx === -1) {
-    throw new Error(
-      `invalid locator "${trimmed}": missing @ separator between identifier and namespace`,
+      `invalid locator "${trimmed}": missing NID — expected urn:<nid>:<domain>:<identifier>`,
     );
   }
 
-  const identifier = identityPart.slice(0, atIdx);
-  const namespace  = identityPart.slice(atIdx + 1);
+  const nid = rest.slice(0, nidEnd);
+  const nss = rest.slice(nidEnd + 1); // Namespace Specific String
 
-  if (!identifier) throw new Error(`invalid locator "${trimmed}": identifier is empty`);
-  if (!namespace)  throw new Error(`invalid locator "${trimmed}": namespace is empty`);
+  if (!NID_RE.test(nid)) {
+    throw new Error(
+      `invalid locator "${trimmed}": NID "${nid}" is not a valid namespace identifier`,
+    );
+  }
+
+  if (nid.toLowerCase() === 'urn') {
+    throw new Error(
+      `invalid locator "${trimmed}": "urn" is a reserved NID and cannot be used (§2)`,
+    );
+  }
+
+  // NSS must have at least one colon separating domain from identifier
+  const domainEnd = nss.indexOf(':');
+  if (domainEnd === -1) {
+    throw new Error(
+      `invalid locator "${trimmed}": NSS "${nss}" must be <domain>:<identifier>`,
+    );
+  }
+
+  const domain = nss.slice(0, domainEnd);
+  const identifier = nss.slice(domainEnd + 1);
+
+  if (!domain) {
+    throw new Error(`invalid locator "${trimmed}": domain component is empty`);
+  }
+  if (!identifier) {
+    throw new Error(`invalid locator "${trimmed}": identifier component is empty`);
+  }
+  if (identifier.includes(':')) {
+    throw new Error(
+      `invalid locator "${trimmed}": identifier "${identifier}" must not contain colons`,
+    );
+  }
 
   return {
+    urn: trimmed,
+    nid: nid.toLowerCase(),
+    domain,
     identifier,
-    namespace,
-    mode,
-    agentId: `${identifier}@${namespace}`,
   };
 }

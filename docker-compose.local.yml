@@ -7,6 +7,8 @@ services:
       POSTGRES_DB: garr
       POSTGRES_USER: garr
       POSTGRES_PASSWORD: ${GARR_POSTGRES_PASSWORD:-garr-local}
+    ports:
+      - "5433:5432"
     volumes:
       - garr_postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
@@ -56,6 +58,8 @@ services:
       POSTGRES_DB: registry
       POSTGRES_USER: registry
       POSTGRES_PASSWORD: ${REGISTRY_POSTGRES_PASSWORD:-registry-local}
+    ports:
+      - "5434:5432"
     volumes:
       - registry_postgres_data:/var/lib/postgresql/data
     restart: unless-stopped

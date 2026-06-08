@@ -1,73 +1,92 @@
 import { describe, it, expect } from 'vitest';
 import { parseLocator } from '../../src/lib/locatorParser.js';
 
-describe('parseLocator', () => {
+describe('parseLocator (URN format)', () => {
 
   // ── Happy paths ─────────────────────────────────────────────────────────────
 
-  it('parses :global locator', () => {
-    const result = parseLocator('agent123@xyz.com:global');
+  it('parses urn:ai:<domain>:<identifier>', () => {
+    const result = parseLocator('urn:ai:nasiko.com:ankit');
     expect(result).toEqual({
-      identifier: 'agent123',
-      namespace:  'xyz.com',
-      mode:       'global',
-      agentId:    'agent123@xyz.com',
+      urn: 'urn:ai:nasiko.com:ankit',
+      nid: 'ai',
+      domain: 'nasiko.com',
+      identifier: 'ankit',
     });
   });
 
+  it('normalises NID to lowercase', () => {
+    const result = parseLocator('urn:AI:nasiko.com:ankit');
+    expect(result.nid).toBe('ai');
+  });
+
   it('trims surrounding whitespace', () => {
-    const result = parseLocator('  agent123@xyz.com:global  ');
-    expect(result.identifier).toBe('agent123');
-    expect(result.namespace).toBe('xyz.com');
-    expect(result.mode).toBe('global');
+    const result = parseLocator('  urn:ai:nasiko.com:ankit  ');
+    expect(result.identifier).toBe('ankit');
+    expect(result.domain).toBe('nasiko.com');
   });
 
-  it('agentId is identifier@namespace without the mode suffix', () => {
-    const { agentId } = parseLocator('refunds@jetblue.com:global');
-    expect(agentId).toBe('refunds@jetblue.com');
+  it('accepts any RFC 8141-valid NID — not locked to "ai"', () => {
+    const result = parseLocator('urn:nanda:google.com:search');
+    expect(result.nid).toBe('nanda');
+    expect(result.domain).toBe('google.com');
+    expect(result.identifier).toBe('search');
   });
 
-  it('handles subdomains in namespace', () => {
-    const result = parseLocator('myagent@agents.nasiko.com:global');
-    expect(result.identifier).toBe('myagent');
-    expect(result.namespace).toBe('agents.nasiko.com');
+  it('handles subdomains in domain component', () => {
+    const result = parseLocator('urn:ai:agents.nasiko.com:refunds');
+    expect(result.domain).toBe('agents.nasiko.com');
+    expect(result.identifier).toBe('refunds');
+  });
+
+  it('preserves the full urn field verbatim (post-trim)', () => {
+    const result = parseLocator('urn:ai:jetblue.com:scheduler');
+    expect(result.urn).toBe('urn:ai:jetblue.com:scheduler');
   });
 
   // ── Error paths ─────────────────────────────────────────────────────────────
 
-  it('throws on missing mode suffix (no colon)', () => {
-    expect(() => parseLocator('agent123@xyz.com')).toThrow('missing mode suffix');
+  it('throws on missing urn: prefix', () => {
+    expect(() => parseLocator('ankit@nasiko.com:global')).toThrow('must start with "urn:"');
   });
 
-  it('throws on unknown mode', () => {
-    expect(() => parseLocator('agent123@xyz.com:http')).toThrow('unknown mode');
+  it('throws on missing NID (urn: only)', () => {
+    expect(() => parseLocator('urn:')).toThrow('missing NID');
   });
 
-  it('throws on removed :dnssrv mode', () => {
-    expect(() => parseLocator('scheduler@nasiko.com:dnssrv')).toThrow('unknown mode');
+  it('throws on invalid NID characters', () => {
+    expect(() => parseLocator('urn:a_b:nasiko.com:ankit')).toThrow('not a valid namespace identifier');
   });
 
-  it('throws on removed :nandaindex.org mode', () => {
-    expect(() => parseLocator('agent@xyz.com:nandaindex.org')).toThrow('unknown mode');
+  it('throws on NID starting with hyphen', () => {
+    expect(() => parseLocator('urn:-ai:nasiko.com:ankit')).toThrow('not a valid namespace identifier');
   });
 
-  it('throws on missing @ separator', () => {
-    expect(() => parseLocator('agent123.xyz.com:global')).toThrow('missing @ separator');
+  it('throws on reserved NID "urn"', () => {
+    expect(() => parseLocator('urn:urn:nasiko.com:ankit')).toThrow('reserved NID');
+  });
+
+  it('throws on NSS missing domain:identifier separator', () => {
+    expect(() => parseLocator('urn:ai:nasiko.com')).toThrow('must be <domain>:<identifier>');
+  });
+
+  it('throws on empty domain', () => {
+    expect(() => parseLocator('urn:ai::ankit')).toThrow('domain component is empty');
   });
 
   it('throws on empty identifier', () => {
-    expect(() => parseLocator('@xyz.com:global')).toThrow('identifier is empty');
+    expect(() => parseLocator('urn:ai:nasiko.com:')).toThrow('identifier component is empty');
   });
 
-  it('throws on empty namespace', () => {
-    expect(() => parseLocator('agent123@:global')).toThrow('namespace is empty');
+  it('throws on identifier with extra colons (ambiguous NSS)', () => {
+    expect(() => parseLocator('urn:ai:nasiko.com:ankit:extra')).toThrow('must not contain colons');
   });
 
   it('throws on empty string', () => {
-    expect(() => parseLocator('')).toThrow('missing mode suffix');
+    expect(() => parseLocator('')).toThrow('must start with "urn:"');
   });
 
   it('throws on whitespace-only string', () => {
-    expect(() => parseLocator('   ')).toThrow('missing mode suffix');
+    expect(() => parseLocator('   ')).toThrow('must start with "urn:"');
   });
 });
