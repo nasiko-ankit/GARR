@@ -33,8 +33,12 @@ export async function buildServer(options: BuildServerOptions = {}) {
   fastify.setErrorHandler((error: { statusCode?: number; message?: string }, _request, reply) => {
     fastify.log.error(error);
     const statusCode = error.statusCode ?? 500;
+    // Only surface the error message for known client errors (4xx from Fastify schema
+    // validation or explicit reply.code().send()). For 5xx we return a generic message
+    // so internal Postgres error details (table/constraint names) never reach callers.
+    const isClientError = statusCode >= 400 && statusCode < 500;
     reply.code(statusCode).send({
-      error: error.message ?? 'INTERNAL_ERROR',
+      error: isClientError ? (error.message ?? 'BAD_REQUEST') : 'INTERNAL_ERROR',
     });
   });
 

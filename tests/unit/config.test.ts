@@ -97,6 +97,8 @@ describe('buildConfig', () => {
     process.env.DATABASE_URL = 'x';
     process.env.PORT = '4000';
     process.env.NODE_ENV = 'production';
+    // JWT_SECRET must be set and long enough when NODE_ENV=production (JWT hardening)
+    process.env.JWT_SECRET = 'a-secret-that-is-long-enough-for-production-use';
     process.env.SIGNING_KEY_ID = 'custom';
     process.env.DB_MAX_CONNECTIONS = '20';
 
@@ -105,6 +107,8 @@ describe('buildConfig', () => {
     expect(cfg.nodeEnv).toBe('production');
     expect(cfg.signing.keyId).toBe('custom');
     expect(cfg.db.maxConnections).toBe(20);
+
+    delete process.env.JWT_SECRET;
   });
 
   it('exits when DATABASE_URL is missing', () => {

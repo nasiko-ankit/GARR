@@ -1,6 +1,9 @@
 # ── Dependencies ──────────────────────────────────────────────────────────────
 node_modules/
 registry-server/node_modules/
+# Explicit paths needed because node_modules/ trailing-slash pattern does not match symlinks
+examples/rap-server/node_modules
+examples/rap-server-acme/node_modules
 
 # ── Build output ──────────────────────────────────────────────────────────────
 dist/

@@ -33,6 +33,8 @@ const errorSchema = {
  * POST /auth/register  — create account with email + password
  * POST /auth/login     — sign in, get JWT
  * GET  /auth/me        — get current user info (requires JWT)
+ *
+ * TODO v2: add rate limiting to /auth/register and /auth/login per §9 to prevent brute-force and spam.
  */
 export async function registerAuthRoutes(fastify: FastifyInstance): Promise<void> {
   const config = getConfig();

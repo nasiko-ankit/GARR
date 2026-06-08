@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { getSql } from '../db.js';
 import { getConfig } from '../config.js';
@@ -45,8 +46,10 @@ async function requireAuth(request: FastifyRequest, reply: FastifyReply): Promis
     return reply.code(401).send({ error: 'UNAUTHORIZED', detail: 'authentication required' });
   }
 
-  // Admin token fast-path (Bearer <static-token>)
-  if (auth === `Bearer ${config.adminToken}`) return;
+  // Admin token fast-path (Bearer <static-token>) — timing-safe to prevent timing attacks
+  const expected = Buffer.from(`Bearer ${config.adminToken}`);
+  const actual   = Buffer.from(auth);
+  if (actual.length === expected.length && timingSafeEqual(actual, expected)) return;
 
   // JWT path — verify and decode
   try {
