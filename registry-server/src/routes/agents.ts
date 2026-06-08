@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { getSql } from '../db.js';
 import { getConfig } from '../config.js';
@@ -32,12 +33,29 @@ interface UpdateAgentBody {
   status?: 'active' | 'inactive';
 }
 
-/** Verifies Bearer token matches REGISTRY_ADMIN_TOKEN. */
-async function requireAdminToken(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+/**
+ * Accepts EITHER:
+ *  - A valid JWT (issued by /auth/login) — for users logged in via the UI
+ *  - The static REGISTRY_ADMIN_TOKEN — for CI/automation backward compat
+ */
+async function requireAuth(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const auth = request.headers['authorization'];
   const config = getConfig();
-  if (!auth || auth !== `Bearer ${config.adminToken}`) {
-    reply.code(401).send({ error: 'UNAUTHORIZED', detail: 'valid admin token required' });
+
+  if (!auth) {
+    return reply.code(401).send({ error: 'UNAUTHORIZED', detail: 'authentication required' });
+  }
+
+  // Admin token fast-path (Bearer <static-token>) — timing-safe to prevent timing attacks
+  const expected = Buffer.from(`Bearer ${config.adminToken}`);
+  const actual   = Buffer.from(auth);
+  if (actual.length === expected.length && timingSafeEqual(actual, expected)) return;
+
+  // JWT path — verify and decode
+  try {
+    await request.jwtVerify();
+  } catch {
+    return reply.code(401).send({ error: 'UNAUTHORIZED', detail: 'invalid or expired token' });
   }
 }
 
@@ -95,6 +113,71 @@ export async function registerAgentRoutes(fastify: FastifyInstance): Promise<voi
     return reply.send(buildCatalogDocument(rows));
   });
 
+  /**
+   * Search agents by keyword or URN locator.
+   *
+   * GET /agents/search?q=order
+   *   → searches identifier, display_name, description, tags (case-insensitive LIKE)
+   *
+   * GET /agents/search?q=urn:ai:moonbakery.com:order
+   *   → extracts "order" from the URN and does a direct identifier lookup,
+   *     returning that single agent record
+   *
+   * Returns the same CatalogDocument shape as GET /agents.
+   */
+  const URN_RE = /^urn:[a-z0-9][a-z0-9-]{0,30}:[^:]+:([^:]+)$/i;
+
+  fastify.get<{ Querystring: { q: string } }>('/agents/search', {
+    schema: {
+      tags: ['catalog'],
+      summary: 'Search agents by keyword or URN locator',
+      querystring: {
+        type: 'object',
+        required: ['q'],
+        properties: { q: { type: 'string', minLength: 1, maxLength: 128 } },
+      },
+      response: { 200: CATALOG_DOCUMENT_SCHEMA, 400: API_ERROR_SCHEMA },
+    },
+  }, async (request, reply) => {
+    const q = request.query.q.trim();
+    if (!q) {
+      return reply.code(400).send({ error: 'BAD_REQUEST', detail: 'q is required' });
+    }
+
+    const sql = getSql();
+
+    // URN fast-path: extract the identifier (last segment) and look up directly
+    const urnMatch = URN_RE.exec(q);
+    if (urnMatch) {
+      const identifier = urnMatch[1]!;
+      const rows = await sql<AgentRow[]>`
+        SELECT * FROM agents
+        WHERE agent_id = ${identifier} AND status = 'active'
+        LIMIT 1
+      `;
+      return reply.send(buildCatalogDocument(rows));
+    }
+
+    // Keyword search across identifier, display_name, description, and tags
+    const pattern = `%${q.toLowerCase()}%`;
+    const rows = await sql<AgentRow[]>`
+      SELECT * FROM agents
+      WHERE status = 'active'
+        AND (
+          LOWER(agent_id)     LIKE ${pattern}
+          OR LOWER(display_name) LIKE ${pattern}
+          OR LOWER(COALESCE(description, '')) LIKE ${pattern}
+          OR EXISTS (
+            SELECT 1 FROM unnest(tags) AS t
+            WHERE LOWER(t) LIKE ${pattern}
+          )
+        )
+      ORDER BY agent_id ASC
+      LIMIT 50
+    `;
+    return reply.send(buildCatalogDocument(rows));
+  });
+
   // Get single agent as CatalogEntry
   fastify.get<{ Params: { agent_id: string } }>('/agents/:agent_id', {
     schema: {
@@ -123,7 +206,7 @@ export async function registerAgentRoutes(fastify: FastifyInstance): Promise<voi
 
   // Create agent
   fastify.post<{ Body: CreateAgentBody }>('/agents', {
-    preHandler: [requireAdminToken],
+    preHandler: [requireAuth],
     schema: {
       tags: ['catalog'],
       summary: 'Register an agent in the catalog',
@@ -177,7 +260,7 @@ export async function registerAgentRoutes(fastify: FastifyInstance): Promise<voi
 
   // Update agent
   fastify.put<{ Params: { agent_id: string }; Body: UpdateAgentBody }>('/agents/:agent_id', {
-    preHandler: [requireAdminToken],
+    preHandler: [requireAuth],
     schema: {
       tags: ['catalog'],
       summary: 'Update an agent catalog entry',
@@ -230,7 +313,7 @@ export async function registerAgentRoutes(fastify: FastifyInstance): Promise<voi
 
   // Delete agent
   fastify.delete<{ Params: { agent_id: string } }>('/agents/:agent_id', {
-    preHandler: [requireAdminToken],
+    preHandler: [requireAuth],
     schema: {
       tags: ['catalog'],
       summary: 'Delete an agent from the catalog',

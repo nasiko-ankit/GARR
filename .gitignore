@@ -1,29 +1,53 @@
+# ── Dependencies ──────────────────────────────────────────────────────────────
 node_modules/
-dist/
-.env
-.env.local
-.env.*.local
-*.log
-coverage/
-.DS_Store
-.vscode/
-.idea/
-
-# Explicit node_modules paths (covers symlinks which trailing-slash pattern misses)
+registry-server/node_modules/
+# Explicit paths needed because node_modules/ trailing-slash pattern does not match symlinks
 examples/rap-server/node_modules
 examples/rap-server-acme/node_modules
 
-# macOS zip extraction metadata — never commit
+# ── Build output ──────────────────────────────────────────────────────────────
+dist/
+registry-server/dist/
+
+# ── Environment files — NEVER commit secrets ──────────────────────────────────
+.env
+.env.local
+.env.*.local
+registry-server/.env
+registry-server/.env.local
+registry-server/.env.*.local
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# ── Test / coverage ───────────────────────────────────────────────────────────
+coverage/
+
+# ── OS / editor ───────────────────────────────────────────────────────────────
+.DS_Store
+.vscode/
+.idea/
 **/__MACOSX
 __MACOSX
 
-# Python bytecode and caches
+# ── Python (agents) ───────────────────────────────────────────────────────────
 **/__pycache__
 *.pyc
 *.pyo
 **/.ruff_cache
+agents/**/.venv
+agents/**/venv
 
-# Local-only: internal working docs and source specs
+# ── Private keys and credentials — NEVER commit ───────────────────────────────
+*.pem
+*.key
+*.p12
+*.pfx
+.keys.*.json
+
+# ── Local-only docs ───────────────────────────────────────────────────────────
 CLAUDE.md
 PROGRESS.md
 DEMO.md
@@ -31,11 +55,4 @@ ARCHITECTURE.md
 HANDOFF.md
 *.postman_collection.json
 *.docx
-
-# Private keys and key stores — never commit
-*.pem
-*.key
-*.p12
-*.pfx
-.keys.*.json
 
