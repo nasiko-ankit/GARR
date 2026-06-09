@@ -1,17 +1,22 @@
+# DBs only — use when running services natively with `npm run dev`
+#
+#   NANDA Index DB:  postgresql://garr:garr-local@localhost:5433/garr
+#   Registry DB:     postgresql://registry:registry-local@localhost:5434/registry
+#
+# Usage: docker compose up -d
+
 services:
-  postgres:
-    image: postgres:16
-    container_name: garr-postgres
+
+  garr-postgres:
+    image: postgres:16-alpine
     environment:
-      POSTGRES_USER: garr
-      POSTGRES_PASSWORD: garr
       POSTGRES_DB: garr
+      POSTGRES_USER: garr
+      POSTGRES_PASSWORD: garr-local
     ports:
-      # Host 5433 -> container 5432. Avoids clash with a native Postgres
-      # that many macOS devs have running on host 5432.
       - "5433:5432"
     volumes:
-      - garr-postgres-data:/var/lib/postgresql/data
+      - garr_postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U garr -d garr"]
@@ -19,5 +24,23 @@ services:
       timeout: 3s
       retries: 5
 
+  registry-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: registry
+      POSTGRES_USER: registry
+      POSTGRES_PASSWORD: registry-local
+    ports:
+      - "5434:5432"
+    volumes:
+      - registry_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U registry -d registry"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
 volumes:
-  garr-postgres-data:
+  garr_postgres_data:
+  registry_postgres_data:

@@ -15,5 +15,5 @@ COPY --from=builder /app/dist ./dist
 COPY db/migrations ./db/migrations
 COPY entrypoint.sh ./
 RUN chmod +x entrypoint.sh
-EXPOSE 3001
+EXPOSE 3002
 ENTRYPOINT ["./entrypoint.sh"]

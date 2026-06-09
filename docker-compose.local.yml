@@ -1,6 +1,18 @@
+# Full local dev stack — all services, no Caddy, direct ports
+#
+#   garr-web:        http://localhost:3000
+#   NANDA Index:     http://localhost:3001
+#   Registry Server: http://localhost:3002
+#
+# Usage: docker compose -f docker-compose.local.yml --env-file .env.local up --build
+#
+# To tail logs:
+#   docker compose -f docker-compose.local.yml logs -f garr-api
+#   docker compose -f docker-compose.local.yml logs -f registry-server
+
 services:
 
-  # ── NANDA Index database ──────────────────────────────────────────────────
+  # ── NANDA Index database ──────────────────────────────────────────────────────
   garr-postgres:
     image: postgres:16-alpine
     environment:
@@ -19,39 +31,37 @@ services:
       retries: 5
       start_period: 10s
 
-  # ── NANDA Index Server ────────────────────────────────────────────────────
+  # ── NANDA Index Server ────────────────────────────────────────────────────────
   garr-api:
     build:
       context: .
       dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
     environment:
-      NODE_ENV: production
+      NODE_ENV: development
       PORT: 3001
       DATABASE_URL: postgresql://garr:${GARR_POSTGRES_PASSWORD:-garr-local}@garr-postgres:5432/garr
       DB_MAX_CONNECTIONS: ${DB_MAX_CONNECTIONS:-10}
-      # Optional — only used for signed responses
       SIGNING_PRIVATE_KEY: ${GARR_SIGNING_PRIVATE_KEY:-}
       SIGNING_KEY_ID: ${GARR_SIGNING_KEY_ID:-garr-dev-2026}
-      # OAuth
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
-      OAUTH_CALLBACK_BASE_URL: ${OAUTH_CALLBACK_BASE_URL:-http://localhost:8080}
-      # JWT
+      # OAuth redirects go to port 3001 (direct — no Caddy in this setup)
+      OAUTH_CALLBACK_BASE_URL: ${OAUTH_CALLBACK_BASE_URL:-http://localhost:3001}
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
-      # Email (SMTP_URL=log → console.log in dev)
       SMTP_URL: ${SMTP_URL:-log}
       EMAIL_FROM: ${EMAIL_FROM:-noreply@nanda.local}
-      # Frontend
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:80}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
     depends_on:
       garr-postgres:
         condition: service_healthy
     restart: unless-stopped
 
-  # ── Registry Server database ──────────────────────────────────────────────
+  # ── Registry Server database ──────────────────────────────────────────────────
   registry-postgres:
     image: postgres:16-alpine
     environment:
@@ -70,53 +80,44 @@ services:
       retries: 5
       start_period: 10s
 
-  # ── Registry Server ───────────────────────────────────────────────────────
+  # ── Registry Server ───────────────────────────────────────────────────────────
   registry-server:
     build:
       context: ./registry-server
       dockerfile: Dockerfile
+    ports:
+      - "3002:3002"
     environment:
-      NODE_ENV: production
+      NODE_ENV: development
       PORT: 3002
       DATABASE_URL: postgresql://registry:${REGISTRY_POSTGRES_PASSWORD:-registry-local}@registry-postgres:5432/registry
       DB_MAX_CONNECTIONS: ${DB_MAX_CONNECTIONS:-10}
       REGISTRY_ADMIN_TOKEN: ${REGISTRY_ADMIN_TOKEN:-dev-token-change-in-production}
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
     depends_on:
       registry-postgres:
         condition: service_healthy
     restart: unless-stopped
 
-  # ── garr-web (Next.js frontend) ───────────────────────────────────────────
+  # ── garr-web (Next.js) ────────────────────────────────────────────────────────
+  # NEXT_PUBLIC_* vars are baked into the Next.js bundle at build time.
+  # They must reflect what the browser (on the host) can reach — localhost ports.
   garr-web:
     build:
       context: ../garr-web
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_GARR_API_BASE_URL: ${NEXT_PUBLIC_GARR_API_BASE_URL:-http://localhost:8080}
+        NEXT_PUBLIC_GARR_API_BASE_URL: ${NEXT_PUBLIC_GARR_API_BASE_URL:-http://localhost:3001}
+    ports:
+      - "3000:3000"
     environment:
       PORT: 3000
       HOSTNAME: 0.0.0.0
-    restart: unless-stopped
-
-  # ── Caddy reverse proxy ───────────────────────────────────────────────────
-  caddy:
-    image: caddy:2-alpine
-    ports:
-      - "80:80"
-      - "8080:8080"
-      - "9002:9002"
-    volumes:
-      - ./Caddyfile.local:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
     depends_on:
       - garr-api
-      - registry-server
-      - garr-web
     restart: unless-stopped
 
 volumes:
   garr_postgres_data:
   registry_postgres_data:
-  caddy_data:
-  caddy_config:
